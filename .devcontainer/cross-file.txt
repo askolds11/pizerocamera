@@ -1,0 +1,22 @@
+[binaries]
+c = 'armv6-rpi-linux-gnueabihf-gcc'
+cpp = 'armv6-rpi-linux-gnueabihf-g++'
+ar = 'armv6-rpi-linux-gnueabihf-ar'
+strip = 'armv6-rpi-linux-gnueabihf-strip'
+#pkg-config = 'pkg-config-arm-linux-gnueabihf'
+
+[target_machine]
+system = 'linux'
+cpu_family = 'arm'
+cpu = 'arm1176jzf-s'
+endian = 'little'
+
+[host_machine]
+system = 'linux'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'
+
+[built-in options]
+c_args = ['-mcpu=arm1176jzf-s', '-mfpu=vfp', '-mfloat-abi=hard']
+cpp_args = ['-mcpu=arm1176jzf-s', '-mfpu=vfp', '-mfloat-abi=hard']

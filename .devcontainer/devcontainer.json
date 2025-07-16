@@ -1,0 +1,22 @@
+{
+  "name": "Rust Cross-Compile Development",
+  "dockerFile": "Dockerfile",
+  "workspaceFolder": "/home/develop/pizerocamera",
+  "customizations": {
+    "jetbrains": {
+      "backend": "RustRover"
+    }
+  },
+  "mounts": [
+    "type=volume,source=rust-tools,target=/keepfiles"
+  ],
+  "onCreateCommand": "",
+  "postCreateCommand": "",
+  "initializeCommand": "",
+  "shutdownAction": "stopContainer",
+  "remoteUser": "develop",
+  "updateRemoteUserUID": false,
+  //  "remoteUser": "develop"
+//  "onCreateCommand": "curl https://sh.rustup.rs -sSf | sh -s -- -y",
+//  "postCreateCommand": ". $HOME/.cargo/env && rustup target add arm-unknown-linux-gnueabihf"
+}

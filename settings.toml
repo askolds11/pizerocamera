@@ -1,0 +1,6 @@
+ntp_server_url = "pimothership.lan"
+ntp_topic = "ntp"
+camera_topic = "camera"
+command_topic = "command"
+status_topic = "status"
+error_topic = "error"

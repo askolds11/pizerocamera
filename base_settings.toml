@@ -1,0 +1,5 @@
+pi_zero_id = "A0"
+server_url = "http://pimothership.lan:5000"
+mqtt_url = "pimothership.lan"
+mqtt_port = 1883
+update_topic = "update"
