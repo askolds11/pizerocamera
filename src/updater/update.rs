@@ -65,5 +65,5 @@ pub fn restart() {
 
     // If exec() fails for some reason, exit the process manually
     eprintln!("Exec failed, exiting. Error: \n {}", e);
-    std::process::exit(0);
+    std::process::exit(1);
 }

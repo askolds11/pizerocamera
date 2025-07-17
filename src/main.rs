@@ -107,7 +107,7 @@ async fn main() {
     tokio::select! {
         _ = mqtt_loop => {},
         _ = ctrl_c => {
-            std::process::exit(0);
+            std::process::exit(1);
         },
     }
 }
