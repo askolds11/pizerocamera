@@ -1,25 +1,20 @@
-use crate::camera::{CameraControls, CameraControlsLimit, CameraService, ControlConfig};
+use crate::camera::{CameraControlsLimit, CameraMode, CameraService};
 use crate::endpoints::get_upload_image_url;
+use crate::functions::requests::{CameraRequest, SetControls, TakePicture};
+use crate::functions::responses::TakePictureResponse;
 use crate::settings::{BaseSettings, Settings};
 use crate::utils::{AsyncClientExt, SuccessWrapper};
-use pyo3::Python;
-use reqwest::{multipart, Client};
-use rumqttc::v5::mqttbytes::v5::Publish;
+use pyo3::{PyResult, Python};
+use reqwest::{Client, multipart};
 use rumqttc::v5::AsyncClient;
-use serde::{Deserialize, Serialize};
+use rumqttc::v5::mqttbytes::v5::Publish;
+use serde::Serialize;
+use std::collections::HashMap;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use uuid::Uuid;
 
 pub const STILL_CAMERA_CONTROLS_FILENAME: &'static str = "controls_still.json";
 pub const VIDEO_CAMERA_CONTROLS_FILENAME: &'static str = "controls_video.json";
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct TakePicture {
-    start_epoch: u64,
-    uuid: Uuid,
-}
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -27,23 +22,6 @@ struct CameraControlsResponse {
     min: CameraControlsLimit,
     max: CameraControlsLimit,
     default: CameraControlsLimit,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct SetControls {
-    pub control_config: ControlConfig,
-    pub camera_controls: CameraControls,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(tag = "type")]
-enum CameraRequest {
-    TakePicture(TakePicture),
-    SetControls(SetControls),
-    GetControls,
-    StartPreview,
-    StopPreview,
 }
 
 pub async fn handle_picture(
@@ -58,7 +36,7 @@ pub async fn handle_picture(
 
     match camera_request {
         CameraRequest::TakePicture(request) => {
-            take_picture(
+            let res = take_picture(
                 base_settings,
                 settings,
                 mqtt_client,
@@ -66,7 +44,24 @@ pub async fn handle_picture(
                 camera_service,
                 request,
             )
-            .await?
+            .await;
+
+            if let Err(err) = res {
+                println!("Error while taking picture: {:?}", err);
+                let err = TakePictureResponse::PictureFailedToTake {
+                    message: err.to_string(),
+                };
+                let success_wrapper = SuccessWrapper::failure(err);
+
+                mqtt_client
+                    .publish_individual(
+                        &settings.camera_topic,
+                        &base_settings.pi_zero_id,
+                        success_wrapper.into_bytes()?,
+                    )
+                    .await
+                    .unwrap_or_default();
+            }
         }
         CameraRequest::SetControls(controls) => {
             set_controls(
@@ -76,16 +71,19 @@ pub async fn handle_picture(
                 camera_service,
                 controls,
             )
-            .await?
+            .await?;
         }
-        CameraRequest::GetControls => {
-            get_controls(base_settings, settings, mqtt_client, camera_service).await?
+        CameraRequest::GetControlLimits => {
+            get_control_limits(base_settings, settings, mqtt_client, camera_service).await?;
         }
         CameraRequest::StartPreview => {
             start_preview(camera_service).await?;
         }
         CameraRequest::StopPreview => {
             stop_preview(camera_service).await?;
+        }
+        CameraRequest::GetControls(_) => {
+            get_controls(base_settings, settings, mqtt_client, camera_service).await?;
         }
     }
 
@@ -100,26 +98,174 @@ async fn take_picture(
     camera_service: &CameraService,
     request: TakePicture,
 ) -> Result<(), anyhow::Error> {
-    let (bytes, metadata) = Python::with_gil(|py| camera_service.capture(py).unwrap());
+    let pic = take_picture_take(camera_service).await;
+    let (bytes, metadata) = match pic {
+        Ok(pic) => pic,
+        Err(e) => {
+            let err = TakePictureResponse::PictureFailedToTake {
+                message: e.to_string(),
+            };
+            let success_wrapper = SuccessWrapper::failure(err);
 
+            mqtt_client
+                .publish_individual(
+                    &settings.camera_topic,
+                    &base_settings.pi_zero_id,
+                    success_wrapper.into_bytes()?,
+                )
+                .await?;
+
+            // Return ok, as error handled in this function
+            return Ok(());
+        }
+    };
+
+    let save_result = take_picture_save(&base_settings, &request, &bytes, &metadata).await;
+
+    let (filename, metadata_json) = match save_result {
+        Ok(res) => res,
+        Err(e) => {
+            let err = TakePictureResponse::PictureFailedToSave {
+                message: e.to_string(),
+            };
+            let success_wrapper = SuccessWrapper::failure(err);
+
+            mqtt_client
+                .publish_individual(
+                    &settings.camera_topic,
+                    &base_settings.pi_zero_id,
+                    success_wrapper.into_bytes()?,
+                )
+                .await?;
+
+            // Return ok, as error handled in this function
+            return Ok(());
+        }
+    };
+
+    // Log that saved successfully
+    let picture_saved = TakePictureResponse::PictureSavedOnDevice;
+    // It's ok if it fails, we will still try to send image
+    let picture_saved = SuccessWrapper::success(picture_saved).into_bytes().ok();
+    if let Some(picture_saved) = picture_saved {
+        mqtt_client
+            .publish_individual(
+                &settings.camera_topic,
+                &base_settings.pi_zero_id,
+                picture_saved,
+            )
+            .await
+            .unwrap_or_default();
+    }
+
+    let send_result = take_picture_send(
+        &base_settings,
+        &request,
+        &http_client,
+        bytes,
+        filename,
+        metadata_json,
+    )
+    .await;
+
+    match send_result {
+        Ok(_) => {}
+        Err(e) => {
+            let err = TakePictureResponse::PictureFailedToSend {
+                message: e.to_string(),
+            };
+            let success_wrapper = SuccessWrapper::failure(err);
+
+            mqtt_client
+                .publish_individual(
+                    &settings.camera_topic,
+                    &base_settings.pi_zero_id,
+                    success_wrapper.into_bytes()?,
+                )
+                .await?;
+
+            // Return ok, as error handled in this function
+            return Ok(());
+        }
+    }
+
+    let picture_sent = TakePictureResponse::PictureSent;
+    let picture_sent = SuccessWrapper::success(picture_sent).into_bytes().ok();
+    if let Some(picture_sent) = picture_sent {
+        mqtt_client
+            .publish_individual(
+                &settings.camera_topic,
+                &base_settings.pi_zero_id,
+                picture_sent,
+            )
+            .await
+            .unwrap_or_default();
+    }
+
+    Ok(())
+}
+
+/// Take picture - 1. take pic
+async fn take_picture_take(
+    camera_service: &CameraService,
+) -> Result<(Vec<u8>, HashMap<String, String>), anyhow::Error> {
+    let picture_result = Python::with_gil(|py| -> PyResult<(Vec<u8>, HashMap<String, String>)> {
+        camera_service.capture(py)
+    })?;
+
+    Ok(picture_result)
+}
+
+/// Take picture - 2. save pic
+/// Returns filename and metadata json (can be empty, if fails)
+/// Returns error only if saving file fails
+async fn take_picture_save(
+    base_settings: &BaseSettings,
+    request: &TakePicture,
+    bytes: &Vec<u8>,
+    metadata: &HashMap<String, String>,
+) -> Result<(String, String), anyhow::Error> {
     let filename = format!("{}_{}.jpg", &request.uuid, &base_settings.pi_zero_id);
+    let filename_with_path = format!("photos/{}", filename);
     // Save file first
-    let mut file = File::create(&filename).await?;
+    let mut file = File::create(&filename_with_path).await?;
     file.write_all(&bytes).await?;
 
-    // Picture taken
-    mqtt_client
-        .publish_individual(
-            &settings.camera_topic,
-            &base_settings.pi_zero_id,
-            "Picture taken new",
-        )
-        .await?;
-
     println!("Metadata: {:?}", metadata);
-    let metadata_json = serde_json::to_string(&metadata)?;
+    let metadata_json = serde_json::to_string(&metadata).unwrap_or("{}".to_string());
 
+    let filename_metadata = format!(
+        "photos/{}_{}_metadata.json",
+        &request.uuid, &base_settings.pi_zero_id
+    );
+    let metadata_file = File::create(&filename_metadata).await;
+    match metadata_file {
+        Ok(mut metadata_file) => {
+            metadata_file
+                .write_all(metadata_json.as_bytes())
+                .await
+                .unwrap_or_default();
+        }
+        Err(e) => {
+            println!("Failed to create metadata file: {:?}", e)
+        }
+    }
+
+    Ok((filename, metadata_json))
+}
+
+/// Take picture - 3. send pic
+async fn take_picture_send(
+    base_settings: &BaseSettings,
+    request: &TakePicture,
+    http_client: &Client,
+    bytes: Vec<u8>,
+    filename: String,
+    metadata_json: String,
+) -> Result<(), anyhow::Error> {
     let uuid = &request.uuid.simple();
+    let start_epoch = request.start_epoch;
+    let start_epoch = start_epoch.to_string();
     let form = multipart::Form::new()
         .part(
             "image",
@@ -128,31 +274,22 @@ async fn take_picture(
                 .mime_str("application/octet-stream")?,
         )
         .text("metadata", metadata_json)
+        .text("startEpoch", start_epoch)
         .text("uuid", uuid.to_string());
 
     let response = http_client
-        .post(get_upload_image_url(&base_settings.server_url)) // <-- update your URL
+        .post(get_upload_image_url(&base_settings.server_url))
         .multipart(form)
         .send()
         .await?;
 
     let status = response.status();
-    let success_wrapper = if status.is_success() {
-        SuccessWrapper::success(status.as_str())
+
+    if status.is_success() {
+        Ok(())
     } else {
-        SuccessWrapper::failure(status.as_str())
-    };
-
-    // Picture taken
-    mqtt_client
-        .publish_individual(
-            &settings.camera_topic,
-            &base_settings.pi_zero_id,
-            success_wrapper.into_bytes()?,
-        )
-        .await?;
-
-    Ok(())
+        Err(anyhow::Error::msg(status.to_string()))
+    }
 }
 
 async fn start_preview(camera_service: &mut CameraService) -> Result<(), anyhow::Error> {
@@ -188,9 +325,9 @@ async fn set_controls(
 ) -> Result<(), anyhow::Error> {
     println!("Writing file");
     // Save controls
-    let filename = match controls.control_config {
-        ControlConfig::Still => STILL_CAMERA_CONTROLS_FILENAME,
-        ControlConfig::Video => VIDEO_CAMERA_CONTROLS_FILENAME,
+    let filename = match controls.camera_mode {
+        CameraMode::Still => STILL_CAMERA_CONTROLS_FILENAME,
+        CameraMode::Video => VIDEO_CAMERA_CONTROLS_FILENAME,
     };
     let mut file = File::create(&filename).await?;
     let bytes = serde_json::to_string(&controls.camera_controls)?.into_bytes();
@@ -198,20 +335,20 @@ async fn set_controls(
 
     println!("Settings controls in camera service");
     // Set controls
-    match controls.control_config {
-        ControlConfig::Still => {
-            camera_service.still_controls = Some(controls.camera_controls.clone())
-        }
-        ControlConfig::Video => {
-            camera_service.video_controls = Some(controls.camera_controls.clone())
-        }
+    match controls.camera_mode {
+        CameraMode::Still => camera_service.still_controls = Some(controls.camera_controls.clone()),
+        CameraMode::Video => camera_service.video_controls = Some(controls.camera_controls.clone()),
     }
 
-    println!("Settings controls in python");
-    Python::with_gil(|py| -> Result<(), anyhow::Error> {
-        camera_service.set_controls(py, controls.camera_controls.to_pydict(py)?)?;
-        Ok(())
-    })?;
+    // Only set config if config matches
+    if controls.camera_mode == camera_service.camera_mode {
+        println!("Settings controls in python");
+        Python::with_gil(|py| -> Result<(), anyhow::Error> {
+            camera_service.set_controls(py, controls.camera_controls.to_pydict(py)?)?;
+            Ok(())
+        })?;
+    }
+
     let success_wrapper = SuccessWrapper::success("");
 
     // Picture taken
@@ -226,7 +363,7 @@ async fn set_controls(
     Ok(())
 }
 
-async fn get_controls(
+async fn get_control_limits(
     base_settings: &BaseSettings,
     settings: &Settings,
     mqtt_client: &AsyncClient,
@@ -248,6 +385,30 @@ async fn get_controls(
     )?;
     let controls_response = CameraControlsResponse { min, max, default };
     let success_wrapper = SuccessWrapper::success(controls_response);
+
+    // Picture taken
+    mqtt_client
+        .publish_individual(
+            &settings.camera_topic,
+            &base_settings.pi_zero_id,
+            success_wrapper.into_bytes()?,
+        )
+        .await?;
+    Ok(())
+}
+
+async fn get_controls(
+    base_settings: &BaseSettings,
+    settings: &Settings,
+    mqtt_client: &AsyncClient,
+    camera_service: &CameraService,
+) -> Result<(), anyhow::Error> {
+    let controls = match camera_service.camera_mode {
+        CameraMode::Still => &camera_service.still_controls,
+        CameraMode::Video => &camera_service.video_controls,
+    };
+
+    let success_wrapper = SuccessWrapper::success(controls);
 
     // Picture taken
     mqtt_client

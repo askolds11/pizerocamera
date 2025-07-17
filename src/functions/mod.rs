@@ -3,6 +3,8 @@ mod command;
 mod ntp;
 mod status;
 mod update;
+mod requests;
+mod responses;
 
 use crate::camera::CameraService;
 use crate::settings::{BaseSettings, Settings};
