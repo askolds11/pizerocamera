@@ -3,10 +3,10 @@ use pyo3::ffi::c_str;
 use pyo3::prelude::{PyAnyMethods, PyDictMethods, PyModule};
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::{Bound, IntoPyObjectExt, Py, PyAny, PyResult, Python};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum CameraMode {
     Still,
     Video,
@@ -59,24 +59,49 @@ impl CameraService {
     }
 
     pub fn capture(&self, py: Python) -> PyResult<(Vec<u8>, HashMap<String, String>)> {
-        // TODO: Logging
         let result = self.instance.call_method0(py, "capture")?;
         println!("Picture captured");
-        // TODO: Prioritize data, if metadata unsuccessful, still try to send it
         // Returned tuple with array and metadata
         let tuple = result.downcast_bound::<PyTuple>(py)?;
-        let array = tuple.get_item(0)?;
-        let dict = tuple.get_item(1)?;
-        let dict = dict.downcast::<PyDict>()?;
 
+        let array = tuple.get_item(0)?;
         let jpeg_bytes: Vec<u8> = array.extract()?;
+        println!("Bytes converted");
+
         let mut metadata: HashMap<String, String> = HashMap::new();
-        for (key, value) in dict.iter() {
-            let key_str: String = key.extract()?;
-            let value_str: String = value.str()?.extract()?;
-            metadata.insert(key_str, value_str);
+
+        // Try to convert metadata. If it doesn't work, do not return error, as it's important to get
+        // images, but metadata not mandatory
+        let dict = tuple.get_item(1);
+        match dict {
+            Ok(dict) => {
+                let dict = dict.downcast::<PyDict>();
+                match dict {
+                    Ok(dict) => {
+                        for (key, value) in dict.iter() {
+                            let key_str: Option<String> = key.extract().ok();
+                            if let Some(key_str) = key_str {
+                                let value_str = value.str().ok();
+                                if let Some(value_str) = value_str {
+                                    let value_str: Option<String> = value_str.extract().ok();
+                                    if let Some(value_str) = value_str {
+                                        metadata.insert(key_str, value_str);
+                                    }
+                                }
+                            }
+                        }
+                        println!("Metadata converted")
+                    }
+                    Err(e) => {
+                        println!("Metadata could not be converted: {:?}", e)
+                    }
+                }
+
+            }
+            Err(e) => {
+                println!("Metadata could not be converted: {:?}", e)
+            }
         }
-        println!("Bytes, metadata converted");
 
         Ok((jpeg_bytes, metadata))
     }
