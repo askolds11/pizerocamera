@@ -18,11 +18,12 @@ mod utils;
 use crate::functions::handle_notification;
 use crate::startup::{critical_startup, startup};
 use crate::updater::restart;
-use rumqttc::v5::mqttbytes::v5::Packet;
 use rumqttc::v5::Event;
+use rumqttc::v5::mqttbytes::v5::Packet;
+use std::env;
 use std::ops::DerefMut;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::signal;
 use tokio::sync::Mutex;
 
@@ -33,7 +34,8 @@ pub const MYAPPVERSION: &'static str = concat!("[MYAPPVERSION:", env!("CARGO_PKG
 async fn main() {
     println!("Version: {}", MYAPPVERSION);
     // Critical startup
-    let (base_settings, mqtt_client, mut mqtt_eventloop, http_client) = critical_startup().await;
+    let (base_settings, mqtt_client, mut mqtt_eventloop, http_client, current_exe) =
+        critical_startup().await;
 
     let (settings, camera_service) = startup(&base_settings, &mqtt_client).await;
 
@@ -44,12 +46,14 @@ async fn main() {
     let http_client = Arc::new(http_client);
     let should_restart = Arc::new(AtomicBool::new(false));
     let camera_service = Arc::new(Mutex::new(camera_service));
+    let current_exe = Arc::new(current_exe);
 
     let mqtt_loop = async {
         loop {
             // Restart, if needed
             if should_restart.load(Ordering::Relaxed) {
-                restart();
+                let current_exe = Arc::clone(&current_exe);
+                restart(&current_exe);
                 break;
             }
 

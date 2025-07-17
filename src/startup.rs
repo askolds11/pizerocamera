@@ -1,3 +1,4 @@
+use std::env;
 use crate::camera::{CameraControls, CameraService};
 use crate::functions::{STILL_CAMERA_CONTROLS_FILENAME, VIDEO_CAMERA_CONTROLS_FILENAME};
 use crate::ntp_sync::ntp_sync;
@@ -10,7 +11,7 @@ use reqwest::Client;
 use rumqttc::v5::mqttbytes::v5::Packet;
 use rumqttc::v5::{AsyncClient, Event, EventLoop, MqttOptions};
 use semver::Version;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -18,7 +19,7 @@ use std::time::Duration;
 /// and auto updates if needed, in case something later fails and auto updater in loop
 /// is not reached, does not work
 /// Function can panic, as there is no recovering from critical startup
-pub async fn critical_startup() -> (BaseSettings, AsyncClient, EventLoop, Client) {
+pub async fn critical_startup() -> (BaseSettings, AsyncClient, EventLoop, Client, PathBuf) {
     println!("Starting up");
     // Critical startup settings
     let base_settings = Config::builder()
@@ -51,6 +52,7 @@ pub async fn critical_startup() -> (BaseSettings, AsyncClient, EventLoop, Client
 
     // Check for updates
     let should_restart = AtomicBool::new(false);
+    let current_exe = env::current_exe().unwrap();
 
     println!("Checking for update");
     loop {
@@ -95,10 +97,10 @@ pub async fn critical_startup() -> (BaseSettings, AsyncClient, EventLoop, Client
     }
 
     if should_restart.load(Ordering::Relaxed) {
-        restart();
+        restart(&current_exe);
     }
 
-    (base_settings, mqtt_client, mqtt_eventloop, http_client)
+    (base_settings, mqtt_client, mqtt_eventloop, http_client, current_exe)
 }
 
 pub async fn startup(

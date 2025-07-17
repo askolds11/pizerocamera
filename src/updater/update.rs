@@ -10,6 +10,7 @@ use std::io::copy;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, fs};
+use std::path::PathBuf;
 
 const TEMP_DIR: &str = "self_update_";
 const DOWNLOADED_FILE: &str = "pizerocamera_exec";
@@ -55,11 +56,9 @@ pub async fn update(
 }
 
 /// Restart the program. Does not work in a spawned task.
-pub fn restart() {
+pub fn restart(current_exe: &PathBuf) {
     println!("Restarting");
-    // Ok to unwrap, as worst case crashes and systemd restarts
-    let current_exe = env::current_exe().unwrap();
-
+    
     use std::os::unix::process::CommandExt;
     let e = Command::new(current_exe).exec();
 
