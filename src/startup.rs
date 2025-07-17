@@ -182,6 +182,11 @@ pub async fn startup(
         .await
         .unwrap();
 
+    // if photos does not exist, create it
+    if !tokio::fs::metadata("photos").await.is_ok() {
+        tokio::fs::create_dir_all("photos").await.unwrap();
+    }
+
     (settings, camera_service)
 }
 
