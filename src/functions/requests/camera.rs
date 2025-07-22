@@ -5,7 +5,7 @@ use uuid::Uuid;
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TakePicture {
-    pub start_epoch: u64,
+    pub picture_epoch: u64,
     pub uuid: Uuid,
 }
 

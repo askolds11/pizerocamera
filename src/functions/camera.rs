@@ -10,8 +10,12 @@ use rumqttc::v5::AsyncClient;
 use rumqttc::v5::mqttbytes::v5::Publish;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tokio::fs;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
+use tokio_timerfd::Delay;
+use uuid::Uuid;
 
 pub const STILL_CAMERA_CONTROLS_FILENAME: &'static str = "controls_still.json";
 pub const VIDEO_CAMERA_CONTROLS_FILENAME: &'static str = "controls_video.json";
@@ -98,6 +102,36 @@ async fn take_picture(
     camera_service: &CameraService,
     request: TakePicture,
 ) -> Result<(), anyhow::Error> {
+    // convert to monotonic
+    let picture_time = UNIX_EPOCH + Duration::from_millis(request.picture_epoch);
+    let picture_time = picture_time.duration_since(SystemTime::now());
+    let picture_time = match picture_time {
+        Ok(picture_time) => picture_time,
+        Err(e) => {
+            let err = TakePictureResponse::PictureFailedToSchedule {
+                message: e.to_string(),
+            };
+            let success_wrapper = SuccessWrapper::failure(err);
+            let response = CameraResponse::TakePicture {
+                response: success_wrapper,
+            };
+
+            mqtt_client
+                .publish_individual(
+                    &settings.camera_topic,
+                    &base_settings.pi_zero_id,
+                    response.into_bytes()?,
+                )
+                .await?;
+
+            // Return ok, as error handled in this function
+            return Ok(());
+        }
+    };
+    let picture_time = Instant::now() + picture_time;
+    // wait to take picture
+    Delay::new(picture_time)?.await?;
+
     let pic = take_picture_take(camera_service).await;
     let (bytes, metadata) = match pic {
         Ok(pic) => pic,
@@ -264,8 +298,6 @@ async fn take_picture_send(
     metadata_json: String,
 ) -> Result<(), anyhow::Error> {
     let uuid = &request.uuid.simple();
-    let start_epoch = request.start_epoch;
-    let start_epoch = start_epoch.to_string();
     let form = multipart::Form::new()
         .part(
             "image",
@@ -274,7 +306,6 @@ async fn take_picture_send(
                 .mime_str("application/octet-stream")?,
         )
         .text("metadata", metadata_json)
-        .text("startEpoch", start_epoch)
         .text("uuid", uuid.to_string());
 
     let response = http_client
