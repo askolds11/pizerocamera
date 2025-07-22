@@ -24,3 +24,5 @@ bytes = "1.10.1"
 semver = "1.0.26"
 uuid = {  version = "1.17.0", features = ["serde"] }
 tokio-timerfd = "0.2.0"
+jpeg-encoder = "0.6.1"
+numpy = "0.25.0"

@@ -11,6 +11,12 @@ pub struct TakePicture {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct SendPicture {
+    pub uuid: Uuid,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct SetControls {
     pub camera_mode: CameraMode,
     pub camera_controls: CameraControls,
@@ -20,6 +26,7 @@ pub struct SetControls {
 #[serde(tag = "type")]
 pub enum CameraRequest {
     TakePicture(TakePicture),
+    SendPicture(SendPicture),
     SetControls(SetControls),
     GetControls(CameraMode),
     GetControlLimits,

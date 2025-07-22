@@ -5,6 +5,7 @@ use pyo3::types::{PyDict, PyTuple};
 use pyo3::{Bound, IntoPyObjectExt, Py, PyAny, PyResult, Python};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use numpy::{PyArrayMethods, PyReadonlyArray1};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum CameraMode {
@@ -58,21 +59,27 @@ impl CameraService {
         })
     }
 
-    pub fn capture(&self, py: Python) -> PyResult<(Vec<u8>, HashMap<String, String>)> {
+    pub fn capture(&self, py: Python) -> PyResult<(Vec<u8>, u16, u16, HashMap<String, String>)> {
         let result = self.instance.call_method0(py, "capture")?;
         println!("Picture captured");
         // Returned tuple with array and metadata
         let tuple = result.downcast_bound::<PyTuple>(py)?;
 
         let array = tuple.get_item(0)?;
-        let jpeg_bytes: Vec<u8> = array.extract()?;
+        let jpeg_bytes: PyReadonlyArray1<u8> = array.extract()?;
+        let jpeg_bytes = jpeg_bytes.to_vec()?;
         println!("Bytes converted");
+
+        let width = tuple.get_item(1)?;
+        let width: u16 = width.extract()?;
+        let height = tuple.get_item(2)?;
+        let height: u16 = height.extract()?;
 
         let mut metadata: HashMap<String, String> = HashMap::new();
 
         // Try to convert metadata. If it doesn't work, do not return error, as it's important to get
         // images, but metadata not mandatory
-        let dict = tuple.get_item(1);
+        let dict = tuple.get_item(3);
         match dict {
             Ok(dict) => {
                 let dict = dict.downcast::<PyDict>();
@@ -103,7 +110,7 @@ impl CameraService {
             }
         }
 
-        Ok((jpeg_bytes, metadata))
+        Ok((jpeg_bytes, width, height, metadata))
     }
 
     pub fn set_controls(&self, py: Python, controls: Bound<PyDict>) -> PyResult<()> {

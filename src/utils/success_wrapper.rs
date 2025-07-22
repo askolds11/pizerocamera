@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use serde::Serialize;
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct SuccessWrapper<T: Serialize> {
     pub success: bool,
     pub value: T,

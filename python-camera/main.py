@@ -7,6 +7,8 @@ from http.server import BaseHTTPRequestHandler
 from threading import Condition
 from typing import Any
 
+import numpy as np
+
 import libcamera
 from picamera2 import Picamera2
 from picamera2.encoders import MJPEGEncoder
@@ -114,22 +116,28 @@ class CameraService:
         self.cam.stop()
         self.cam.configure(still_config)
 
-    def capture(self) -> tuple[bytes, dict[str, Any]]:
+    def capture(self) -> tuple[np.ndarray, int, int, dict[str, Any]]:
         """
         :return: Jpeg bytes and metadata
         """
+        # TODO: Maybe can use this instead of awaiting in rust?
+        # request = picam2.capture_request(flush=time.monotonic_ns())
         request = self.cam.capture_request()
-        image = request.make_image("main")
+        # image = request.make_image("main")
+        array = request.make_array("main")
         metadata = request.get_metadata()
         request.release()
 
-        jpeg_buffer = io.BytesIO()
-        image.save(jpeg_buffer, format='JPEG', quality=95)
-        jpeg_bytes = jpeg_buffer.getvalue()
+        # jpeg_buffer = io.BytesIO()
+        # image.save(jpeg_buffer, format='JPEG', quality=95)
+        # jpeg_bytes = jpeg_buffer.getvalue()
 
-        print(metadata)
+        flattened_array = array.flatten()
+        height, width, _ = array.shape
 
-        return jpeg_bytes, metadata
+        # print(metadata)
+
+        return flattened_array, width, height, metadata
 
     def stop(self):
         print("Stopping camera")
