@@ -39,7 +39,7 @@ pub async fn critical_startup() -> (BaseSettings, AsyncClient, EventLoop, Client
     );
     mqttoptions.set_keep_alive(Duration::from_secs(120));
 
-    let (mqtt_client, mut mqtt_eventloop) = AsyncClient::new(mqttoptions, 10);
+    let (mqtt_client, mut mqtt_eventloop) = AsyncClient::new(mqttoptions, 20);
 
     // Subscribe to update topic. Other topics are not critical, as only this can fix startup problem
     mqtt_client
@@ -149,10 +149,14 @@ pub async fn startup(
         .await
         .unwrap();
 
+    println!("Subscribed");
+
     let still_controls: Option<CameraControls> =
         read_camera_controls(&base_settings, &mqtt_client, STILL_CAMERA_CONTROLS_FILENAME).await;
     let video_controls: Option<CameraControls> =
         read_camera_controls(&base_settings, &mqtt_client, VIDEO_CAMERA_CONTROLS_FILENAME).await;
+
+    println!("Read controls from file");
 
     let camera_service = Python::with_gil(|py| -> Result<CameraService, anyhow::Error> {
         let still_controls_pydict = match &still_controls {
@@ -164,6 +168,9 @@ pub async fn startup(
         Ok(camera_service)
     })
     .unwrap();
+
+    println!("Set up camera service");
+
 
     let ntp_result = ntp_sync(&settings);
     let ntp_json = match ntp_result {

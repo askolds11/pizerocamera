@@ -36,6 +36,16 @@ impl AsyncClientExt for AsyncClient {
             QoS::AtLeastOnce,
         )
         .await?;
+        self.subscribe(
+            get_column_receive_topic(topic, pi_zero_id),
+            QoS::AtLeastOnce,
+        )
+        .await?;
+        self.subscribe(
+            get_row_receive_topic(topic, pi_zero_id),
+            QoS::AtLeastOnce,
+        )
+        .await?;
         self.subscribe(topic, QoS::AtLeastOnce).await?;
         Ok(())
     }
@@ -58,6 +68,16 @@ impl AsyncClientExt for AsyncClient {
 /// Gets individual topic for message receiving from global topic and Pi Zero's id
 pub fn get_individual_receive_topic(topic: &str, pi_zero_id: &str) -> String {
     format!("{}/{}", topic, pi_zero_id)
+}
+
+/// Gets column topic for message receiving from global topic and Pi Zero's id
+pub fn get_column_receive_topic(topic: &str, pi_zero_id: &str) -> String {
+    format!("{}/{}", topic, pi_zero_id.chars().nth(0).unwrap())
+}
+
+/// Gets row topic for message receiving from global topic and Pi Zero's id
+pub fn get_row_receive_topic(topic: &str, pi_zero_id: &str) -> String {
+    format!("{}/{}", topic, pi_zero_id.chars().nth(1).unwrap())
 }
 
 /// Gets individual topic for message sending from global topic and Pi Zero's id
