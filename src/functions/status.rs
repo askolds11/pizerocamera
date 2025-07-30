@@ -37,6 +37,7 @@ pub async fn handle_status(
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Status {
     version: String,
     ip_address: Option<String>,
