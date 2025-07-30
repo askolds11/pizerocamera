@@ -46,13 +46,14 @@ pub async fn handle_picture(
                 settings,
                 mqtt_client,
                 camera_service,
-                request,
+                &request,
             )
             .await;
 
             if let Err(err) = res {
                 println!("Error while taking picture: {:?}", err);
                 let err = TakePictureResponse::Failed {
+                    uuid: request.uuid,
                     message: err.to_string(),
                 };
                 let success_wrapper = SuccessWrapper::failure(err);
@@ -72,11 +73,12 @@ pub async fn handle_picture(
         }
         CameraRequest::SendPicture(request) => {
             let res =
-                send_picture(base_settings, settings, mqtt_client, http_client, request).await;
+                send_picture(base_settings, settings, mqtt_client, http_client, &request).await;
 
             if let Err(err) = res {
                 println!("Error while taking picture: {:?}", err);
                 let err = SendPictureResponse::Failed {
+                    uuid: request.uuid,
                     message: err.to_string(),
                 };
                 let success_wrapper = SuccessWrapper::failure(err);
@@ -126,7 +128,7 @@ async fn take_picture(
     settings: &Settings,
     mqtt_client: &AsyncClient,
     camera_service: &CameraService,
-    request: TakePicture,
+    request: &TakePicture,
 ) -> Result<(), anyhow::Error> {
     // convert to monotonic
     let picture_time = UNIX_EPOCH + Duration::from_millis(request.picture_epoch);
@@ -135,6 +137,7 @@ async fn take_picture(
         Ok(picture_time) => picture_time,
         Err(e) => {
             let err = TakePictureResponse::PictureFailedToSchedule {
+                uuid: request.uuid,
                 message: e.to_string(),
             };
             let success_wrapper = SuccessWrapper::failure(err);
@@ -162,7 +165,9 @@ async fn take_picture(
     let (bytes, width, height, metadata) = match pic {
         Ok(pic) => {
             // Send that taken successfully
-            let picture_taken = TakePictureResponse::PictureTaken;
+            let picture_taken = TakePictureResponse::PictureTaken {
+                uuid: request.uuid,
+            };
             // It's ok if it fails, we will still try to save/send
             let success_wrapper = SuccessWrapper::success(picture_taken);
             let response = CameraResponse::TakePicture {
@@ -184,6 +189,7 @@ async fn take_picture(
         }
         Err(e) => {
             let err = TakePictureResponse::PictureFailedToTake {
+                uuid: request.uuid,
                 message: e.to_string(),
             };
             let success_wrapper = SuccessWrapper::failure(err);
@@ -214,6 +220,7 @@ async fn take_picture(
         Ok(res) => res,
         Err(e) => {
             let err = TakePictureResponse::PictureFailedToSave {
+                uuid: request.uuid,
                 message: e.to_string(),
             };
             let success_wrapper = SuccessWrapper::failure(err);
@@ -235,7 +242,9 @@ async fn take_picture(
     };
 
     // Log that saved successfully
-    let picture_saved = TakePictureResponse::PictureSavedOnDevice;
+    let picture_saved = TakePictureResponse::PictureSavedOnDevice {
+        uuid: request.uuid,
+    };
     // It's ok if it fails, we will still try to send image
     let success_wrapper = SuccessWrapper::success(picture_saved);
     let response = CameraResponse::TakePicture {
@@ -262,7 +271,7 @@ async fn send_picture(
     settings: &Settings,
     mqtt_client: &AsyncClient,
     http_client: &Client,
-    request: SendPicture,
+    request: &SendPicture,
 ) -> Result<(), anyhow::Error> {
     let filename = get_filename(&request.uuid, &base_settings.pi_zero_id);
     let file_path = get_photos_path(&filename);
@@ -275,6 +284,7 @@ async fn send_picture(
         Ok(bytes) => bytes,
         Err(e) => {
             let err = SendPictureResponse::PictureFailedToRead {
+                uuid: request.uuid,
                 message: e.to_string(),
             };
             let success_wrapper = SuccessWrapper::failure(err);
@@ -313,6 +323,7 @@ async fn send_picture(
         Ok(_) => {}
         Err(e) => {
             let err = SendPictureResponse::PictureFailedToSend {
+                uuid: request.uuid,
                 message: e.to_string(),
             };
             let success_wrapper = SuccessWrapper::failure(err);
@@ -333,7 +344,9 @@ async fn send_picture(
         }
     }
 
-    let picture_sent = SendPictureResponse::PictureSent;
+    let picture_sent = SendPictureResponse::PictureSent {
+        uuid: request.uuid,
+    };
     let picture_sent = SuccessWrapper::success(picture_sent);
     let response = CameraResponse::SendPicture {
         response: picture_sent,

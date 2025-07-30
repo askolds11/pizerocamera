@@ -1,32 +1,37 @@
+use crate::utils::SuccessWrapper;
 use bytes::Bytes;
 use serde::Serialize;
-use crate::utils::SuccessWrapper;
+use uuid::Uuid;
 
 #[derive(Serialize, Debug)]
 #[serde(tag = "type")]
 pub enum CameraResponse {
-    TakePicture { response: SuccessWrapper<TakePictureResponse> },
-    SendPicture { response: SuccessWrapper<SendPictureResponse> },
+    TakePicture {
+        response: SuccessWrapper<TakePictureResponse>,
+    },
+    SendPicture {
+        response: SuccessWrapper<SendPictureResponse>,
+    },
 }
 
 #[derive(Serialize, Debug)]
 #[serde(tag = "type")]
 pub enum TakePictureResponse {
-    PictureFailedToSchedule { message: String },
-    PictureTaken,
-    PictureFailedToTake { message: String },
-    PictureSavedOnDevice,
-    PictureFailedToSave { message: String },
-    Failed { message: String }
+    PictureFailedToSchedule { uuid: Uuid, message: String },
+    PictureTaken { uuid: Uuid },
+    PictureFailedToTake { uuid: Uuid, message: String },
+    PictureSavedOnDevice { uuid: Uuid },
+    PictureFailedToSave { uuid: Uuid, message: String },
+    Failed { uuid: Uuid, message: String },
 }
 
 #[derive(Serialize, Debug)]
 #[serde(tag = "type")]
 pub enum SendPictureResponse {
-    Failed { message: String },
-    PictureFailedToRead { message: String },
-    PictureSent,
-    PictureFailedToSend { message: String },
+    Failed { uuid: Uuid, message: String },
+    PictureFailedToRead { uuid: Uuid, message: String },
+    PictureSent { uuid: Uuid },
+    PictureFailedToSend { uuid: Uuid, message: String },
 }
 
 impl CameraResponse {
