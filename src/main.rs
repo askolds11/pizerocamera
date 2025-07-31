@@ -18,12 +18,13 @@ mod utils;
 use crate::functions::handle_notification;
 use crate::startup::{critical_startup, startup};
 use crate::updater::restart;
-use rumqttc::v5::Event;
+use crate::utils::AsyncClientExt;
 use rumqttc::v5::mqttbytes::v5::Packet;
+use rumqttc::v5::Event;
 use std::env;
 use std::ops::DerefMut;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::Mutex;
 
@@ -74,6 +75,48 @@ async fn main() {
                     Ok(event) => {
                         // Only process incoming packets, outgoing etc. are not relevant
                         let Event::Incoming(Packet::Publish(p)) = &event else {
+                            // TODO: Maybe handle subscriptions somewhere else to reuse code
+                            // ConnAck here if reconnecting, need to resubscribe
+                            if let Event::Incoming(Packet::ConnAck(_)) = event {
+                                // Resubscribe
+                                // Update
+                                mqtt_client
+                                    .subscribe_all_individual(&base_settings.update_topic, &base_settings.pi_zero_id)
+                                    .await
+                                    .unwrap();
+                                // NTP
+                                mqtt_client
+                                    .subscribe_all_individual(
+                                        settings.ntp_topic.as_str(),
+                                        base_settings.pi_zero_id.as_str(),
+                                    )
+                                    .await
+                                    .unwrap();
+                                // Taking pictures
+                                mqtt_client
+                                    .subscribe_all_individual(
+                                        settings.camera_topic.as_str(),
+                                        base_settings.pi_zero_id.as_str(),
+                                    )
+                                    .await
+                                    .unwrap();
+                                // Linux commands
+                                mqtt_client
+                                    .subscribe_all_individual(
+                                        settings.command_topic.as_str(),
+                                        base_settings.pi_zero_id.as_str(),
+                                    )
+                                    .await
+                                    .unwrap();
+                                // Status
+                                mqtt_client
+                                    .subscribe_all_individual(
+                                        settings.status_topic.as_str(),
+                                        base_settings.pi_zero_id.as_str(),
+                                    )
+                                    .await
+                                    .unwrap();
+                            }
                             return;
                         };
                         // Print topic
