@@ -31,12 +31,12 @@ pub async fn handle_notification(
     publish: &Publish,
 ) {
     // Handle topic
-    let _ = if publish.is_global_or_individual(&settings.ntp_topic, &base_settings.pi_zero_id) {
+    let _ = if publish.topic_matches_pi(&settings.ntp_topic, &base_settings.pi_zero_id) {
         handle_ntp(&base_settings, &settings, &mqtt_client)
             .await
             .send_if_err(&base_settings, &mqtt_client, &settings.ntp_topic)
             .await
-    } else if publish.is_global_or_individual(&settings.camera_topic, &base_settings.pi_zero_id) {
+    } else if publish.topic_matches_pi(&settings.camera_topic, &base_settings.pi_zero_id) {
         handle_picture(
             &base_settings,
             &settings,
@@ -49,7 +49,7 @@ pub async fn handle_notification(
         .send_if_err(&base_settings, &mqtt_client, &settings.camera_topic)
         .await
     } else if publish
-        .is_global_or_individual(&base_settings.update_topic, &base_settings.pi_zero_id)
+        .topic_matches_pi(&base_settings.update_topic, &base_settings.pi_zero_id)
     {
         handle_update(
             &base_settings,
@@ -61,12 +61,12 @@ pub async fn handle_notification(
         .await
         .send_if_err(&base_settings, &mqtt_client, &base_settings.update_topic)
         .await
-    } else if publish.is_global_or_individual(&settings.command_topic, &base_settings.pi_zero_id) {
+    } else if publish.topic_matches_pi(&settings.command_topic, &base_settings.pi_zero_id) {
         handle_command(&base_settings, &settings, &mqtt_client, &publish)
             .await
             .send_if_err(&base_settings, &mqtt_client, &settings.command_topic)
             .await
-    } else if publish.is_global_or_individual(&settings.status_topic, &base_settings.pi_zero_id) {
+    } else if publish.topic_matches_pi(&settings.status_topic, &base_settings.pi_zero_id) {
         handle_status(&base_settings, &settings, &mqtt_client, &camera_service)
             .await
             .send_if_err(&base_settings, &mqtt_client, &settings.status_topic)

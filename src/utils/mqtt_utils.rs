@@ -86,18 +86,26 @@ pub fn get_individual_send_topic(topic: &str, pi_zero_id: &str) -> String {
 }
 
 pub trait PublishExt {
-    /// Checks if Publish topic matches the global or individual topic
-    fn is_global_or_individual(&self, topic: &str, pi_zero_id: &str) -> bool;
+    /// Checks if Publish topic matches the Pi's topics
+    fn topic_matches_pi(&self, topic: &str, pi_zero_id: &str) -> bool;
 }
 
 impl PublishExt for Publish {
-    fn is_global_or_individual(&self, topic: &str, pi_zero_id: &str) -> bool {
+    fn topic_matches_pi(&self, topic: &str, pi_zero_id: &str) -> bool {
         if self.topic == topic {
             return true;
         } else {
             // Only make individual topic if global topic did not match
             let individual_topic = get_individual_receive_topic(topic, pi_zero_id);
             if self.topic == individual_topic {
+                return true;
+            }
+            let row_topic = get_row_receive_topic(topic, pi_zero_id);
+            if self.topic == row_topic {
+                return true;
+            }
+            let column_topic = get_column_receive_topic(topic, pi_zero_id);
+            if self.topic == column_topic {
                 return true;
             }
         }
