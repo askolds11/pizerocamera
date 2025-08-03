@@ -1,11 +1,11 @@
 use crate::camera::CameraControls;
+use numpy::{PyArrayMethods, PyReadonlyArray1};
 use pyo3::ffi::c_str;
 use pyo3::prelude::{PyAnyMethods, PyDictMethods, PyModule};
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::{Bound, IntoPyObjectExt, Py, PyAny, PyResult, Python};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use numpy::{PyArrayMethods, PyReadonlyArray1};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum CameraMode {
@@ -59,8 +59,8 @@ impl CameraService {
         })
     }
 
-    pub fn capture(&self, py: Python) -> PyResult<(Vec<u8>, u16, u16, HashMap<String, String>)> {
-        let result = self.instance.call_method0(py, "capture")?;
+    pub fn capture(&self, py: Python, time: u64) -> PyResult<(Vec<u8>, u16, u16, HashMap<String, String>)> {
+        let result = self.instance.call_method1(py, "capture", (time, ))?;
         println!("Picture captured");
         // Returned tuple with array and metadata
         let tuple = result.downcast_bound::<PyTuple>(py)?;

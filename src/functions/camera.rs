@@ -4,18 +4,17 @@ use crate::functions::requests::{CameraRequest, SendPicture, SetControls, TakePi
 use crate::functions::responses::{CameraResponse, SendPictureResponse, TakePictureResponse};
 use crate::settings::{BaseSettings, Settings};
 use crate::utils::{AsyncClientExt, SuccessWrapper};
+use jpeg_encoder::{ColorType, Encoder};
+use nix::sys::time::TimeValLike;
 use pyo3::{PyResult, Python};
 use reqwest::{Client, multipart};
 use rumqttc::v5::AsyncClient;
 use rumqttc::v5::mqttbytes::v5::Publish;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use jpeg_encoder::{ColorType, Encoder};
 use tokio::fs;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use tokio_timerfd::Delay;
 use uuid::Uuid;
 
 pub const STILL_CAMERA_CONTROLS_FILENAME: &'static str = "controls_still.json";
@@ -130,38 +129,42 @@ async fn take_picture(
     camera_service: &CameraService,
     request: &TakePicture,
 ) -> Result<(), anyhow::Error> {
-    // convert to monotonic
-    let picture_time = UNIX_EPOCH + Duration::from_millis(request.picture_epoch);
-    let picture_time = picture_time.duration_since(SystemTime::now());
-    let picture_time = match picture_time {
-        Ok(picture_time) => picture_time,
-        Err(e) => {
-            let err = TakePictureResponse::PictureFailedToSchedule {
-                uuid: request.uuid,
-                message: e.to_string(),
-            };
-            let success_wrapper = SuccessWrapper::failure(err);
-            let response = CameraResponse::TakePicture {
-                response: success_wrapper,
-            };
+    // todo: proper error
+    // calculate time between current time and picture time
+    let wall_time = nix::time::clock_gettime(nix::time::ClockId::CLOCK_REALTIME)?;
+    let monotonic_time = nix::time::clock_gettime(nix::time::ClockId::CLOCK_MONOTONIC)?;
+    let wall_nanoseconds = wall_time.num_nanoseconds();
+    let wait_time = request.picture_epoch as i64 * 1000000 - wall_nanoseconds;
+    // return error, if wait time is negative
+    if wait_time < 0 {
+        let err = TakePictureResponse::PictureFailedToSchedule {
+            uuid: request.uuid,
+            message: format!(
+                "Current time: {}, picture time: {}, late by {} ns",
+                wall_nanoseconds, request.picture_epoch, wait_time
+            ),
+        };
+        let success_wrapper = SuccessWrapper::failure(err);
+        let response = CameraResponse::TakePicture {
+            response: success_wrapper,
+        };
 
-            mqtt_client
-                .publish_individual(
-                    &settings.camera_topic,
-                    &base_settings.pi_zero_id,
-                    response.into_bytes()?,
-                )
-                .await?;
+        mqtt_client
+            .publish_individual(
+                &settings.camera_topic,
+                &base_settings.pi_zero_id,
+                response.into_bytes()?,
+            )
+            .await?;
 
-            // Return ok, as error handled in this function
-            return Ok(());
-        }
-    };
-    let picture_time = Instant::now() + picture_time;
-    // wait to take picture
-    Delay::new(picture_time)?.await?;
+        // Return ok, as error handled in this function
+        return Ok(());
+    }
+    // add wait time to monotonic time
+    let monotonic_nanoseconds = monotonic_time.num_nanoseconds();
+    let monotonic_nanoseconds_future = monotonic_nanoseconds + wait_time;
 
-    let pic = take_picture_take(camera_service).await;
+    let pic = take_picture_take(camera_service, monotonic_nanoseconds_future as u64).await;
     let (bytes, width, height, metadata) = match pic {
         Ok(pic) => {
             // Send that taken successfully
@@ -242,9 +245,7 @@ async fn take_picture(
     };
 
     // Log that saved successfully
-    let picture_saved = TakePictureResponse::PictureSavedOnDevice {
-        uuid: request.uuid,
-    };
+    let picture_saved = TakePictureResponse::PictureSavedOnDevice { uuid: request.uuid };
     // It's ok if it fails, we will still try to send image
     let success_wrapper = SuccessWrapper::success(picture_saved);
     let response = CameraResponse::TakePicture {
@@ -344,9 +345,7 @@ async fn send_picture(
         }
     }
 
-    let picture_sent = SendPictureResponse::PictureSent {
-        uuid: request.uuid,
-    };
+    let picture_sent = SendPictureResponse::PictureSent { uuid: request.uuid };
     let picture_sent = SuccessWrapper::success(picture_sent);
     let response = CameraResponse::SendPicture {
         response: picture_sent,
@@ -370,10 +369,11 @@ async fn send_picture(
 /// Take picture - 1. take pic
 async fn take_picture_take(
     camera_service: &CameraService,
+    time: u64,
 ) -> Result<(Vec<u8>, u16, u16, HashMap<String, String>), anyhow::Error> {
     let picture_result = Python::with_gil(
         |py| -> PyResult<(Vec<u8>, u16, u16, HashMap<String, String>)> {
-            camera_service.capture(py)
+            camera_service.capture(py, time)
         },
     )?;
 

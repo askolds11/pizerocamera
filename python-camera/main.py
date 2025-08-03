@@ -2,6 +2,7 @@ import io
 import logging
 import socketserver
 import threading
+import time
 from http import server
 from http.server import BaseHTTPRequestHandler
 from threading import Condition
@@ -116,13 +117,15 @@ class CameraService:
         self.cam.stop()
         self.cam.configure(still_config)
 
-    def capture(self) -> tuple[np.ndarray, int, int, dict[str, Any]]:
+    def capture(self, monotonic_ns: int) -> tuple[np.ndarray, int, int, dict[str, Any]]:
         """
         :return: Jpeg bytes and metadata
         """
         # TODO: Maybe can use this instead of awaiting in rust?
+#         print("Current time = ", time.monotonic_ns())
+#         print("Waiting until = ", monotonic_ns)
         # request = picam2.capture_request(flush=time.monotonic_ns())
-        request = self.cam.capture_request()
+        request = self.cam.capture_request(flush=monotonic_ns)
         # image = request.make_image("main")
         array = request.make_array("main")
         metadata = request.get_metadata()

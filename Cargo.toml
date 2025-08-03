@@ -21,6 +21,6 @@ pyo3 = { version = "0.25.1", features = ["abi3-py311", "auto-initialize"] }
 bytes = "1.10.1"
 semver = "1.0.26"
 uuid = {  version = "1.17.0", features = ["serde"] }
-tokio-timerfd = "0.2.0"
 jpeg-encoder = "0.6.1"
 numpy = "0.25.0"
+nix = { version = "0.30.1", features = ["time"]}
