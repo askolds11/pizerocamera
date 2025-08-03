@@ -170,6 +170,7 @@ async fn take_picture(
             // Send that taken successfully
             let picture_taken = TakePictureResponse::PictureTaken {
                 uuid: request.uuid,
+                monotonic_time: monotonic_nanoseconds_future,
             };
             // It's ok if it fails, we will still try to save/send
             let success_wrapper = SuccessWrapper::success(picture_taken);

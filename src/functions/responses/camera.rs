@@ -18,7 +18,7 @@ pub enum CameraResponse {
 #[serde(tag = "type")]
 pub enum TakePictureResponse {
     PictureFailedToSchedule { uuid: Uuid, message: String },
-    PictureTaken { uuid: Uuid },
+    PictureTaken { uuid: Uuid, #[serde(rename = "monotonicTime")] monotonic_time: i64 },
     PictureFailedToTake { uuid: Uuid, message: String },
     PictureSavedOnDevice { uuid: Uuid },
     PictureFailedToSave { uuid: Uuid, message: String },
