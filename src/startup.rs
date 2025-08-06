@@ -173,20 +173,17 @@ pub async fn startup(
 
 
     let ntp_result = ntp_sync(&settings);
-    let ntp_json = match ntp_result {
-        Ok(v) => serde_json::to_string(&SuccessWrapper::success(v)),
-        Err(e) => {
-            println!("{}", e);
-            serde_json::to_string(&SuccessWrapper::failure(e.to_string()))
-        }
-    }
-    .unwrap();
+    let ntp_success_wrapper = ntp_result
+        .map(|x| SuccessWrapper::success(x))
+        .map_err(|e| SuccessWrapper::failure(e.to_string()))
+        .unwrap_or_else(|e| e);;
+    let ntp_json = serde_json::to_string(&ntp_success_wrapper).unwrap();
 
     mqtt_client
         .publish_individual(
             settings.ntp_topic.as_str(),
             base_settings.pi_zero_id.as_str(),
-            ntp_json.into_bytes(),
+            ntp_json,
         )
         .await
         .unwrap();

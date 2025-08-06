@@ -8,20 +8,18 @@ pub async fn handle_ntp(
     settings: &Settings,
     mqtt_client: &AsyncClient,
 ) -> Result<(), anyhow::Error> {
-    let result = ntp_sync(settings)?;
-
-    let result_message = SuccessWrapper {
-        success: true,
-        value: result,
-    };
-
-    let json = serde_json::to_string(&result_message)?;
+    let ntp_result = ntp_sync(settings);
+    let ntp_success_wrapper = ntp_result
+        .map(|x| SuccessWrapper::success(x))
+        .map_err(|e| SuccessWrapper::failure(e.to_string()))
+        .unwrap_or_else(|e| e);
+    let ntp_json = serde_json::to_string(&ntp_success_wrapper)?;
 
     mqtt_client
         .publish_individual(
             settings.ntp_topic.as_str(),
             base_settings.pi_zero_id.as_str(),
-            json,
+            ntp_json,
         )
         .await?;
 
