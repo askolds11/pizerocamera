@@ -17,12 +17,42 @@ pub enum CameraResponse {
 #[derive(Serialize, Debug)]
 #[serde(tag = "type")]
 pub enum TakePictureResponse {
-    PictureFailedToSchedule { uuid: Uuid, message: String },
-    PictureTaken { uuid: Uuid, #[serde(rename = "monotonicTime")] monotonic_time: i64 },
-    PictureFailedToTake { uuid: Uuid, message: String },
-    PictureSavedOnDevice { uuid: Uuid },
-    PictureFailedToSave { uuid: Uuid, message: String },
-    Failed { uuid: Uuid, message: String },
+    PictureFailedToSchedule {
+        uuid: Uuid,
+        message: String,
+        #[serde(rename = "messageReceivedNanos")]
+        message_received_nanos: Option<i64>,
+        #[serde(rename = "waitTimeNanos")]
+        wait_time_nanos: i64,
+    },
+    PictureTaken {
+        uuid: Uuid,
+        #[serde(rename = "monotonicTime")]
+        monotonic_time: i64,
+        #[serde(rename = "messageReceivedNanos")]
+        message_received_nanos: Option<i64>,
+        #[serde(rename = "waitTimeNanos")]
+        wait_time_nanos: i64,
+    },
+    PictureFailedToTake {
+        uuid: Uuid,
+        message: String,
+        #[serde(rename = "messageReceivedNanos")]
+        message_received_nanos: Option<i64>,
+        #[serde(rename = "waitTimeNanos")]
+        wait_time_nanos: i64,
+    },
+    PictureSavedOnDevice {
+        uuid: Uuid,
+    },
+    PictureFailedToSave {
+        uuid: Uuid,
+        message: String,
+    },
+    Failed {
+        uuid: Uuid,
+        message: String,
+    },
 }
 
 #[derive(Serialize, Debug)]

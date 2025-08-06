@@ -35,6 +35,7 @@ pub async fn handle_picture(
     http_client: &Client,
     camera_service: &mut CameraService,
     publish: &Publish,
+    wall_nanoseconds: Option<i64>
 ) -> Result<(), anyhow::Error> {
     let camera_request: CameraRequest = serde_json::from_slice(&publish.payload)?;
 
@@ -46,6 +47,7 @@ pub async fn handle_picture(
                 mqtt_client,
                 camera_service,
                 &request,
+                wall_nanoseconds
             )
             .await;
 
@@ -128,6 +130,7 @@ async fn take_picture(
     mqtt_client: &AsyncClient,
     camera_service: &CameraService,
     request: &TakePicture,
+    message_received_nanos: Option<i64>,
 ) -> Result<(), anyhow::Error> {
     // todo: proper error
     // calculate time between current time and picture time
@@ -143,6 +146,9 @@ async fn take_picture(
                 "Current time: {}, picture time: {}, late by {} ns",
                 wall_nanoseconds, request.picture_epoch, wait_time
             ),
+            message_received_nanos,
+            wait_time_nanos: wait_time
+
         };
         let success_wrapper = SuccessWrapper::failure(err);
         let response = CameraResponse::TakePicture {
@@ -171,6 +177,8 @@ async fn take_picture(
             let picture_taken = TakePictureResponse::PictureTaken {
                 uuid: request.uuid,
                 monotonic_time: monotonic_nanoseconds_future,
+                message_received_nanos,
+                wait_time_nanos: wait_time
             };
             // It's ok if it fails, we will still try to save/send
             let success_wrapper = SuccessWrapper::success(picture_taken);
@@ -195,6 +203,8 @@ async fn take_picture(
             let err = TakePictureResponse::PictureFailedToTake {
                 uuid: request.uuid,
                 message: e.to_string(),
+                message_received_nanos,
+                wait_time_nanos: wait_time
             };
             let success_wrapper = SuccessWrapper::failure(err);
             let response = CameraResponse::TakePicture {

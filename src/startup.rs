@@ -176,7 +176,7 @@ pub async fn startup(
     let ntp_success_wrapper = ntp_result
         .map(|x| SuccessWrapper::success(x))
         .map_err(|e| SuccessWrapper::failure(e.to_string()))
-        .unwrap_or_else(|e| e);;
+        .unwrap_or_else(|e| e);
     let ntp_json = serde_json::to_string(&ntp_success_wrapper).unwrap();
 
     mqtt_client

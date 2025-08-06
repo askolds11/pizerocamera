@@ -25,6 +25,7 @@ use std::env;
 use std::ops::DerefMut;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use nix::sys::time::TimeValLike;
 use tokio::signal;
 use tokio::sync::Mutex;
 
@@ -60,6 +61,7 @@ async fn main() {
 
             // Wait for message
             let notification = mqtt_eventloop.poll().await;
+            let wall_nanoseconds = nix::time::clock_gettime(nix::time::ClockId::CLOCK_REALTIME).ok().map(|wall_time| wall_time.num_nanoseconds());
 
             // Reference counting
             let base_settings = Arc::clone(&base_settings);
@@ -133,6 +135,7 @@ async fn main() {
                             &should_restart,
                             camera_service.lock().await.deref_mut(),
                             &p,
+                            wall_nanoseconds
                         )
                         .await
                     }

@@ -29,6 +29,7 @@ pub async fn handle_notification(
     should_restart: &AtomicBool,
     camera_service: &mut CameraService,
     publish: &Publish,
+    wall_nanoseconds: Option<i64>
 ) {
     // Handle topic
     let _ = if publish.topic_matches_pi(&settings.ntp_topic, &base_settings.pi_zero_id) {
@@ -44,6 +45,7 @@ pub async fn handle_notification(
             &http_client,
             camera_service,
             &publish,
+            wall_nanoseconds
         )
         .await
         .send_if_err(&base_settings, &mqtt_client, &settings.camera_topic)
