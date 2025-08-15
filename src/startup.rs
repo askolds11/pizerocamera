@@ -65,32 +65,15 @@ pub async fn critical_startup() -> (BaseSettings, AsyncClient, EventLoop, Client
 
         // We have to receive at least one update message before exiting loop
         if p.topic == &base_settings.update_topic {
-            let payload = str::from_utf8(&p.payload).unwrap();
-            let new_version = Version::parse(payload);
-            match new_version {
-                Ok(new_version) => {
-                    let version = env!("CARGO_PKG_VERSION");
-                    // this should not fail, because cargo version is guaranteed semver
-                    let version = Version::parse(version).unwrap();
-                    println!("New version: {}, Old version: {}", new_version, version);
-                    if new_version > version {
-                        println!("Newer version available, updating");
-                        let update_result =
-                            update(&base_settings, &http_client, &should_restart).await;
-
-                        if let Err(err) = &update_result {
-                            // TODO: Log
-                            println!("Failed to update: {}", err);
-                        };
-                    }
-                    // Version check completed
+            let update_result = handle_update(&base_settings, &mqtt_client, &http_client, &should_restart, p).await;
+            match update_result {
+                Ok(_) => {
                     break;
-                }
-                // couldn't parse, log it
-                Err(_) => {
-                    println!("Failed to parse new version");
-                    // TODO: Log
-                    // Do not break, as if can't parse new version, then probably should update
+                },
+                Err(err) => {
+                    err.send_error(&base_settings, &mqtt_client, &base_settings.update_topic).await.unwrap_or_default();
+                    println!("Failed to update: {:?}", err);
+                    // Do not break, as if update failed, then probably should update
                 }
             }
         }

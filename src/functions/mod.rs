@@ -1,16 +1,17 @@
 mod camera;
 mod command;
 mod ntp;
-mod status;
-mod update;
 mod requests;
 mod responses;
+mod status;
+mod update;
 
 use crate::camera::CameraService;
 use crate::settings::{BaseSettings, Settings};
 use crate::utils::PublishExt;
 use crate::utils::ResultExt;
 use camera::*;
+pub use camera::{STILL_CAMERA_CONTROLS_FILENAME, VIDEO_CAMERA_CONTROLS_FILENAME};
 use command::*;
 use ntp::*;
 use reqwest::Client;
@@ -18,8 +19,7 @@ use rumqttc::v5::AsyncClient;
 use rumqttc::v5::mqttbytes::v5::Publish;
 use status::*;
 use std::sync::atomic::AtomicBool;
-use update::*;
-pub use camera::{STILL_CAMERA_CONTROLS_FILENAME, VIDEO_CAMERA_CONTROLS_FILENAME};
+pub use update::handle_update;
 
 pub async fn handle_notification(
     base_settings: &BaseSettings,

@@ -7,18 +7,16 @@ use self_replace::self_replace;
 use std::convert::From;
 use std::fs::File;
 use std::io::copy;
-use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::{env, fs};
 use std::path::PathBuf;
+use std::process::Command;
+use std::{env, fs};
 
 const TEMP_DIR: &str = "self_update_";
 const DOWNLOADED_FILE: &str = "pizerocamera_exec";
 
 pub async fn update(
     base_settings: &BaseSettings,
-    http_client: &Client,
-    restart: &AtomicBool,
+    http_client: &Client
 ) -> Result<(), UpdateError> {
     // Temporary directory for download
     // ./self_update_RANDOMID
@@ -34,7 +32,7 @@ pub async fn update(
         .send()
         .await?;
 
-    // If not succesfully downloaded, return error
+    // If not successfully downloaded, return error
     if !response.status().is_success() {
         return Err(UpdateError::from(HttpError::from_response(response).await));
     }
@@ -48,9 +46,6 @@ pub async fn update(
     // Replace executable
     self_replace(tmp_file_path)?;
     fs::remove_dir_all(&tmp_dir)?;
-
-    // Restart from main thread
-    restart.store(true, Ordering::Relaxed);
 
     Ok(())
 }
