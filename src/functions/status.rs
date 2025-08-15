@@ -22,15 +22,14 @@ pub async fn handle_status(
         camera_mode,
     };
 
-    let status_msg = SuccessWrapper {
-        success: true,
-        value: &status,
-    };
-
-    let json = serde_json::to_string(&status_msg)?;
+    let status_msg = SuccessWrapper::success(status);
 
     mqtt_client
-        .publish_individual(&settings.status_topic, &base_settings.pi_zero_id, json)
+        .publish_individual(
+            &settings.status_topic,
+            &base_settings.pi_zero_id,
+            status_msg.into_bytes()?,
+        )
         .await?;
 
     Ok(())

@@ -1,16 +1,15 @@
-use std::env;
 use crate::camera::{CameraControls, CameraService};
-use crate::functions::{STILL_CAMERA_CONTROLS_FILENAME, VIDEO_CAMERA_CONTROLS_FILENAME};
+use crate::functions::{handle_update, STILL_CAMERA_CONTROLS_FILENAME, VIDEO_CAMERA_CONTROLS_FILENAME};
 use crate::ntp_sync::ntp_sync;
 use crate::settings::{BaseSettings, Settings};
-use crate::updater::{restart, update};
-use crate::utils::{AsyncClientExt, ResultExt, SuccessWrapper};
+use crate::updater::restart;
+use crate::utils::{AsyncClientExt, ErrorExt, ResultExt, SuccessWrapper};
 use config::Config;
 use pyo3::Python;
 use reqwest::Client;
 use rumqttc::v5::mqttbytes::v5::Packet;
 use rumqttc::v5::{AsyncClient, Event, EventLoop, MqttOptions};
-use semver::Version;
+use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -32,14 +31,14 @@ pub async fn critical_startup() -> (BaseSettings, AsyncClient, EventLoop, Client
     println!("Base settings: \n {:?}", base_settings);
 
     // Set up MQTT
-    let mut mqttoptions = MqttOptions::new(
+    let mut mqtt_options = MqttOptions::new(
         format!("pi_zero_${}", base_settings.pi_zero_id),
         &base_settings.mqtt_url,
         base_settings.mqtt_port,
     );
-    mqttoptions.set_keep_alive(Duration::from_secs(120));
+    mqtt_options.set_keep_alive(Duration::from_secs(120));
 
-    let (mqtt_client, mut mqtt_eventloop) = AsyncClient::new(mqttoptions, 20);
+    let (mqtt_client, mut mqtt_event_loop) = AsyncClient::new(mqtt_options, 100);
 
     // Subscribe to update topic. Other topics are not critical, as only this can fix startup problem
     mqtt_client
@@ -56,7 +55,7 @@ pub async fn critical_startup() -> (BaseSettings, AsyncClient, EventLoop, Client
 
     println!("Checking for update");
     loop {
-        let event = mqtt_eventloop.poll().await.unwrap();
+        let event = mqtt_event_loop.poll().await.unwrap();
 
         // Only process incoming packets, outgoing etc. are not relevant
         let Event::Incoming(Packet::Publish(p)) = &event else {
@@ -83,9 +82,10 @@ pub async fn critical_startup() -> (BaseSettings, AsyncClient, EventLoop, Client
         restart(&current_exe);
     }
 
-    (base_settings, mqtt_client, mqtt_eventloop, http_client, current_exe)
+    (base_settings, mqtt_client, mqtt_event_loop, http_client, current_exe)
 }
 
+/// Sets up subscriptions, camera controls etc. which are less critical for startup
 pub async fn startup(
     base_settings: &BaseSettings,
     mqtt_client: &AsyncClient,

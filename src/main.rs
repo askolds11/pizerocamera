@@ -37,7 +37,7 @@ pub const MYAPPVERSION: &'static str = concat!("[MYAPPVERSION:", env!("CARGO_PKG
 async fn main() {
     println!("Version: {}", MYAPPVERSION);
     // Critical startup
-    let (base_settings, mqtt_client, mut mqtt_eventloop, http_client, current_exe) =
+    let (base_settings, mqtt_client, mut mqtt_event_loop, http_client, current_exe) =
         critical_startup().await;
 
     let (settings, camera_service) = startup(&base_settings, &mqtt_client).await;
@@ -70,8 +70,7 @@ async fn main() {
             }
 
             // Wait for message
-            let notification = mqtt_eventloop.poll().await;
-            let wall_nanoseconds = nix::time::clock_gettime(nix::time::ClockId::CLOCK_REALTIME).ok().map(|wall_time| wall_time.num_nanoseconds());
+            let notification = mqtt_event_loop.poll().await;
             let wall_nanoseconds = nix::time::clock_gettime(nix::time::ClockId::CLOCK_REALTIME)
                 .ok()
                 .map(|wall_time| wall_time.num_nanoseconds());
