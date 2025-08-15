@@ -99,38 +99,7 @@ pub async fn startup(
 
     println!("Settings: {:?}", settings);
 
-    // NTP
-    mqtt_client
-        .subscribe_all_individual(
-            settings.ntp_topic.as_str(),
-            base_settings.pi_zero_id.as_str(),
-        )
-        .await
-        .unwrap();
-    // Taking pictures
-    mqtt_client
-        .subscribe_all_individual(
-            settings.camera_topic.as_str(),
-            base_settings.pi_zero_id.as_str(),
-        )
-        .await
-        .unwrap();
-    // Linux commands
-    mqtt_client
-        .subscribe_all_individual(
-            settings.command_topic.as_str(),
-            base_settings.pi_zero_id.as_str(),
-        )
-        .await
-        .unwrap();
-    // Status
-    mqtt_client
-        .subscribe_all_individual(
-            settings.status_topic.as_str(),
-            base_settings.pi_zero_id.as_str(),
-        )
-        .await
-        .unwrap();
+    mqtt_client.subscribe_to_all(&base_settings, &settings).await.unwrap();
 
     println!("Subscribed");
 

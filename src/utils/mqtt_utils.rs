@@ -1,4 +1,4 @@
-use crate::settings::BaseSettings;
+use crate::settings::{BaseSettings, Settings};
 use crate::utils::SuccessWrapper;
 use bytes::Bytes;
 use rumqttc::v5::mqttbytes::QoS;
@@ -23,6 +23,13 @@ pub trait AsyncClientExt {
     ) -> Result<(), ClientError>
     where
         P: Into<Bytes>;
+
+    /// Subscribes to all topics except update
+    async fn subscribe_to_all(
+        &self,
+        base_settings: &BaseSettings,
+        settings: &Settings,
+    ) -> Result<(), ClientError>;
 }
 
 // Implement the trait for the third-party type
@@ -42,11 +49,8 @@ impl AsyncClientExt for AsyncClient {
             QoS::AtLeastOnce,
         )
         .await?;
-        self.subscribe(
-            get_row_receive_topic(topic, pi_zero_id),
-            QoS::AtLeastOnce,
-        )
-        .await?;
+        self.subscribe(get_row_receive_topic(topic, pi_zero_id), QoS::AtLeastOnce)
+            .await?;
         self.subscribe(topic, QoS::AtLeastOnce).await?;
         Ok(())
     }
@@ -63,6 +67,43 @@ impl AsyncClientExt for AsyncClient {
         let individual_topic = get_individual_send_topic(topic, pi_zero_id);
         self.publish(individual_topic, QoS::AtLeastOnce, false, payload)
             .await
+    }
+
+    async fn subscribe_to_all(
+        &self,
+        base_settings: &BaseSettings,
+        settings: &Settings,
+    ) -> Result<(), ClientError> {
+        // NTP
+        self.subscribe_all_individual(
+            settings.ntp_topic.as_str(),
+            base_settings.pi_zero_id.as_str(),
+        )
+        .await?;
+        // Taking pictures
+        self.subscribe_all_individual(
+            settings.camera_topic.as_str(),
+            base_settings.pi_zero_id.as_str(),
+        )
+        .await?;
+        // Linux commands
+        self.subscribe_all_individual(
+            settings.command_topic.as_str(),
+            base_settings.pi_zero_id.as_str(),
+        )
+        .await?;
+        // Status
+        self.subscribe_all_individual(
+            settings.status_topic.as_str(),
+            base_settings.pi_zero_id.as_str(),
+        )
+        .await?;
+        // Cancel
+        self.subscribe_all_individual(
+            settings.cancel_topic.as_str(),
+            base_settings.pi_zero_id.as_str(),
+        )
+        .await
     }
 }
 
