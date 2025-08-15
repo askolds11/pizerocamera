@@ -1,4 +1,5 @@
 use crate::settings::BaseSettings;
+use crate::utils::SuccessWrapper;
 use bytes::Bytes;
 use rumqttc::v5::mqttbytes::QoS;
 use rumqttc::v5::mqttbytes::v5::Publish;
@@ -130,11 +131,12 @@ impl ErrorExt for anyhow::Error {
         topic: &str,
     ) -> Result<(), anyhow::Error> {
         let err = format!("{:?}", self);
+        let success_wrapper = SuccessWrapper::failure(err);
         mqtt_client
             .publish_individual(
                 topic,
                 base_settings.pi_zero_id.as_str(),
-                serde_json::to_string(&err)?.into_bytes(),
+                success_wrapper.into_bytes()?,
             )
             .await?;
         Ok(())
