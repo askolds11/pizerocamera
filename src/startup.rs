@@ -1,9 +1,8 @@
 use crate::camera::{CameraControls, CameraService};
-use crate::functions::{handle_update, STILL_CAMERA_CONTROLS_FILENAME, VIDEO_CAMERA_CONTROLS_FILENAME};
-use crate::ntp_sync::ntp_sync;
+use crate::functions::{handle_ntp, handle_status, handle_update, STILL_CAMERA_CONTROLS_FILENAME, VIDEO_CAMERA_CONTROLS_FILENAME};
 use crate::settings::{BaseSettings, Settings};
 use crate::updater::restart;
-use crate::utils::{AsyncClientExt, ErrorExt, ResultExt, SuccessWrapper};
+use crate::utils::{AsyncClientExt, ErrorExt, ResultExt};
 use config::Config;
 use pyo3::Python;
 use reqwest::Client;
@@ -124,21 +123,8 @@ pub async fn startup(
     println!("Set up camera service");
 
 
-    let ntp_result = ntp_sync(&settings);
-    let ntp_success_wrapper = ntp_result
-        .map(|x| SuccessWrapper::success(x))
-        .map_err(|e| SuccessWrapper::failure(e.to_string()))
-        .unwrap_or_else(|e| e);
-    let ntp_json = serde_json::to_string(&ntp_success_wrapper).unwrap();
-
-    mqtt_client
-        .publish_individual(
-            settings.ntp_topic.as_str(),
-            base_settings.pi_zero_id.as_str(),
-            ntp_json,
-        )
-        .await
-        .unwrap();
+    handle_status(&base_settings, &settings, &mqtt_client, &camera_service).await.unwrap();
+    handle_ntp(&base_settings, &settings, &mqtt_client).await.unwrap();
 
     // if photos does not exist, create it
     if !tokio::fs::metadata("photos").await.is_ok() {
