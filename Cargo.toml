@@ -24,3 +24,7 @@ uuid = {  version = "1.17.0", features = ["serde"] }
 jpeg-encoder = "0.6.1"
 numpy = "0.25.0"
 nix = { version = "0.30.1", features = ["time"]}
+
+[profile.release]
+lto = "fat"
+codegen-units = 1

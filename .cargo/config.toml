@@ -1,0 +1,37 @@
+[build]
+target = "arm-unknown-linux-gnueabihf"
+
+[target.arm-unknown-linux-gnueabihf]
+linker = "armv6-rpi-linux-gnueabihf-gcc"
+ar = "armv6-rpi-linux-gnueabihf-ar"
+rustflags = [
+#    "-stdlib=libstdc++",
+    "-Clink-args=-Xlinker -rpath-link=/home/develop/x-tools/armv6-rpi-linux-gnueabihf/armv6-rpi-linux-gnueabihf/sysroot/usr/lib/",
+#    "-I/home/develop/x-tools/armv6-rpi-linux-gnueabihf/armv6-rpi-linux-gnueabihf/sysroot/usr/include",
+#    "-I/home/develop/x-tools/armv6-rpi-linux-gnueabihf/lib/gcc/armv6-rpi-linux-gnueabihf/11.1.0/include/c++",
+#    "-I/home/develop/x-tools/armv6-rpi-linux-gnueabihf/lib/gcc/armv6-rpi-linux-gnueabihf/11.1.0/include/c++/armv6-rpi-linux-gnueabihf",
+#    "-I/home/develop/x-tools/armv6-rpi-linux-gnueabihf/lib/gcc/armv6-rpi-linux-gnueabihf/11.1.0/include",
+#    "-I/home/develop/x-tools/armv6-rpi-linux-gnueabihf/lib/gcc/armv6-rpi-linux-gnueabihf/11.1.0/include-fixed"
+#    "-C", "link-arg=-mcpu=arm1176jzf-s",
+    "-C", "target-cpu=arm1176jzf-s",
+    "-C", "target-feature=+v6,+vfp2",
+    "-L /home/develop/python-dev-3.11.10-armv6-rpi-linux-gnueabihf/usr/local/lib"
+]
+
+[env]
+CC = "armv6-rpi-linux-gnueabihf-gcc"
+CXX = "armv6-rpi-linux-gnueabihf-g++"
+AR = "armv6-rpi-linux-gnueabihf-ar"
+BINDGEN_EXTRA_CLANG_ARGS = """
+--target=arm-linux-gnueabihf \
+--sysroot=/home/develop/x-tools/armv6-rpi-linux-gnueabihf/armv6-rpi-linux-gnueabihf/sysroot \
+-isystem /home/develop/x-tools/armv6-rpi-linux-gnueabihf/armv6-rpi-linux-gnueabihf/include/c++/11.1.0 \
+-isystem /home/develop/x-tools/armv6-rpi-linux-gnueabihf/armv6-rpi-linux-gnueabihf/include/c++/11.1.0/armv6-rpi-linux-gnueabihf \
+-isystem /home/develop/x-tools/armv6-rpi-linux-gnueabihf/lib/gcc/armv6-rpi-linux-gnueabihf/11.1.0/include \
+-isystem /home/develop/x-tools/armv6-rpi-linux-gnueabihf/armv6-rpi-linux-gnueabihf/include/c++/11.1.0/backward \
+-isystem /home/develop/x-tools/armv6-rpi-linux-gnueabihf/lib/gcc/armv6-rpi-linux-gnueabihf/11.1.0/include-fixed \
+-isystem /home/develop/x-tools/armv6-rpi-linux-gnueabihf/armv6-rpi-linux-gnueabihf/include \
+-mcpu=arm1176jzf-s
+"""
+CFLAGS = "-mcpu=arm1176jzf-s"
+CXXFLAGS = "-mcpu=arm1176jzf-s"
