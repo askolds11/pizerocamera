@@ -28,4 +28,6 @@ pub struct Settings {
     pub command_topic: String,
     /// MQTT topic for generic linux commands
     pub status_topic: String,
+    /// MQTT topic for cancelling tasks
+    pub cancel_topic: String,
 }

@@ -18,16 +18,17 @@ mod utils;
 use crate::functions::handle_notification;
 use crate::startup::{critical_startup, startup};
 use crate::updater::restart;
-use crate::utils::AsyncClientExt;
-use rumqttc::v5::mqttbytes::v5::Packet;
+use crate::utils::{AsyncClientExt, PublishExt, SuccessWrapper};
+use nix::sys::time::TimeValLike;
 use rumqttc::v5::Event;
+use rumqttc::v5::mqttbytes::v5::Packet;
 use std::env;
 use std::ops::DerefMut;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use nix::sys::time::TimeValLike;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::signal;
 use tokio::sync::Mutex;
+use tokio::task::JoinSet;
 
 // const VERSION: &str = concat!("MYAPP_VERSION=", env!("CARGO_PKG_VERSION"));
 pub const MYAPPVERSION: &'static str = concat!("[MYAPPVERSION:", env!("CARGO_PKG_VERSION"), "]");
@@ -51,6 +52,7 @@ async fn main() {
     let current_exe = Arc::new(current_exe);
 
     let mqtt_loop = async {
+        let mut join_set = JoinSet::new();
         loop {
             // Restart, if needed
             if should_restart.load(Ordering::Relaxed) {
@@ -59,35 +61,29 @@ async fn main() {
                 break;
             }
 
+            // Clean up tasks
+            while let Some(res) = join_set.try_join_next() {
+                match res {
+                    Ok(_) => { /* task completed successfully, cleaned up */ }
+                    Err(e) => eprintln!("Task failed: {:?}", e),
+                }
+            }
+
             // Wait for message
             let notification = mqtt_eventloop.poll().await;
             let wall_nanoseconds = nix::time::clock_gettime(nix::time::ClockId::CLOCK_REALTIME).ok().map(|wall_time| wall_time.num_nanoseconds());
+            let wall_nanoseconds = nix::time::clock_gettime(nix::time::ClockId::CLOCK_REALTIME)
+                .ok()
+                .map(|wall_time| wall_time.num_nanoseconds());
 
-            // Reference counting
-            let base_settings = Arc::clone(&base_settings);
-            let settings = Arc::clone(&settings);
-            let mqtt_client = Arc::clone(&mqtt_client);
-            let http_client = http_client.clone();
-            let should_restart = Arc::clone(&should_restart);
-            let camera_service = Arc::clone(&camera_service);
-
-            // Process in task to start receiving next message asap
-            tokio::task::spawn(async move {
-                match notification {
-                    Ok(event) => {
-                        // Only process incoming packets, outgoing etc. are not relevant
-                        let Event::Incoming(Packet::Publish(p)) = &event else {
-                            // TODO: Maybe handle subscriptions somewhere else to reuse code
-                            // ConnAck here if reconnecting, need to resubscribe
-                            if let Event::Incoming(Packet::ConnAck(_)) = event {
-                            }
-                            return;
-                        };
-                        // Print topic
-                        println!("Topic: {:?}", p.topic);
-                        // Extract payload, print it
-                        // let payload = str::from_utf8(&p.payload).unwrap();
-                        println!("Received payload: {:?}", &p.payload);
+            // Only do bare minimum, spawn task when possible
+            match notification {
+                Ok(event) => {
+                    // Only process incoming packets, outgoing etc. are not relevant
+                    let Event::Incoming(Packet::Publish(p)) = event else {
+                        // ConnAck here if reconnecting, need to resubscribe
+                        if let Event::Incoming(Packet::ConnAck(_)) = event {
+                            println!("Mqtt resubscribing");
                             // Resubscribe
                             // Update
                             mqtt_client
@@ -101,25 +97,63 @@ async fn main() {
                                 .subscribe_to_all(&base_settings, &settings)
                                 .await
                                 .unwrap();
+                        }
+                        continue;
+                    };
+                    // Print topic
+                    println!("Topic: {:?}", p.topic);
+                    // Print payload
+                    println!("Received payload: {:?}", &p.payload);
 
-                        handle_notification(
-                            &base_settings,
-                            &settings,
-                            &mqtt_client,
-                            &http_client,
-                            &should_restart,
-                            camera_service.lock().await.deref_mut(),
-                            &p,
-                            wall_nanoseconds
-                        )
-                        .await
+                    if p.topic_matches_pi(&settings.cancel_topic, &base_settings.pi_zero_id) {
+                        let task_count = join_set.len();
+                        join_set.shutdown().await;
+                        let cancelled_tasks = task_count - join_set.len();
+                        println!("Cancelled {} tasks", cancelled_tasks);
+
+                        let success_wrapper = SuccessWrapper::success(cancelled_tasks);
+                        let json = serde_json::to_string(&success_wrapper).unwrap();
+
+                        mqtt_client
+                            .publish_individual(
+                                &base_settings.update_topic,
+                                &base_settings.pi_zero_id,
+                                json,
+                            )
+                            .await
+                            .unwrap_or_default();
+                    } else {
+                        // Reference counting
+                        let base_settings = Arc::clone(&base_settings);
+                        let settings = Arc::clone(&settings);
+                        let mqtt_client = Arc::clone(&mqtt_client);
+                        let http_client = http_client.clone();
+                        let should_restart = Arc::clone(&should_restart);
+                        let camera_service = Arc::clone(&camera_service);
+                        let p = p.clone();
+                        // Spawn task
+                        join_set.spawn(async move {
+                            let mut camera_guard = camera_service.lock().await;
+
+                            handle_notification(
+                                &base_settings,
+                                &settings,
+                                &mqtt_client,
+                                &http_client,
+                                &should_restart,
+                                camera_guard.deref_mut(),
+                                &p,
+                                wall_nanoseconds,
+                            )
+                            .await
+                        });
                     }
-                    Err(err) => {
-                        println!("CERROR::ConnectionError::{}", err);
-                        // Don't send error, as connection error probably means can't send error
-                    }
-                };
-            });
+                }
+                Err(err) => {
+                    println!("CERROR::ConnectionError::{}", err);
+                    // Don't send error, as connection error probably means can't send error
+                }
+            };
         }
     };
 
