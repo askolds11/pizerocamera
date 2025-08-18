@@ -59,6 +59,7 @@ pub async fn handle_notification(
             &http_client,
             &should_restart,
             &publish,
+            false
         )
         .await
         .send_if_err(&base_settings, &mqtt_client, &base_settings.update_topic)

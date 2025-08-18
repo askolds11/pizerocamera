@@ -63,13 +63,23 @@ pub async fn critical_startup() -> (BaseSettings, AsyncClient, EventLoop, Client
 
         // We have to receive at least one update message before exiting loop
         if p.topic == &base_settings.update_topic {
-            let update_result = handle_update(&base_settings, &mqtt_client, &http_client, &should_restart, p).await;
+            let update_result = handle_update(
+                &base_settings,
+                &mqtt_client,
+                &http_client,
+                &should_restart,
+                p,
+                true,
+            )
+            .await;
             match update_result {
                 Ok(_) => {
                     break;
-                },
+                }
                 Err(err) => {
-                    err.send_error(&base_settings, &mqtt_client, &base_settings.update_topic).await.unwrap_or_default();
+                    err.send_error(&base_settings, &mqtt_client, &base_settings.update_topic)
+                        .await
+                        .unwrap_or_default();
                     println!("Failed to update: {:?}", err);
                     // Do not break, as if update failed, then probably should update
                 }
@@ -81,7 +91,13 @@ pub async fn critical_startup() -> (BaseSettings, AsyncClient, EventLoop, Client
         restart(&current_exe);
     }
 
-    (base_settings, mqtt_client, mqtt_event_loop, http_client, current_exe)
+    (
+        base_settings,
+        mqtt_client,
+        mqtt_event_loop,
+        http_client,
+        current_exe,
+    )
 }
 
 /// Sets up subscriptions, camera controls etc. which are less critical for startup
@@ -98,7 +114,10 @@ pub async fn startup(
 
     println!("Settings: {:?}", settings);
 
-    mqtt_client.subscribe_to_all(&base_settings, &settings).await.unwrap();
+    mqtt_client
+        .subscribe_to_all(&base_settings, &settings)
+        .await
+        .unwrap();
 
     println!("Subscribed");
 
@@ -122,8 +141,9 @@ pub async fn startup(
 
     println!("Set up camera service");
 
-
-    handle_status(&base_settings, &settings, &mqtt_client, &camera_service).await.unwrap();
+    handle_status(&base_settings, &settings, &mqtt_client, &camera_service)
+        .await
+        .unwrap();
     sync_ntp(&base_settings, &settings, &mqtt_client, &NtpRequest::Step)
         .await
         .unwrap();
