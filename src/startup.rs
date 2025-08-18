@@ -1,5 +1,5 @@
 use crate::camera::{CameraControls, CameraService};
-use crate::functions::{handle_ntp, handle_status, handle_update, STILL_CAMERA_CONTROLS_FILENAME, VIDEO_CAMERA_CONTROLS_FILENAME};
+use crate::functions::{handle_status, handle_update, sync_ntp, NtpRequest, STILL_CAMERA_CONTROLS_FILENAME, VIDEO_CAMERA_CONTROLS_FILENAME};
 use crate::settings::{BaseSettings, Settings};
 use crate::updater::restart;
 use crate::utils::{AsyncClientExt, ErrorExt, ResultExt};
@@ -124,7 +124,9 @@ pub async fn startup(
 
 
     handle_status(&base_settings, &settings, &mqtt_client, &camera_service).await.unwrap();
-    handle_ntp(&base_settings, &settings, &mqtt_client).await.unwrap();
+    sync_ntp(&base_settings, &settings, &mqtt_client, &NtpRequest::Step)
+        .await
+        .unwrap();
 
     // if photos does not exist, create it
     if !tokio::fs::metadata("photos").await.is_ok() {

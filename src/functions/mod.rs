@@ -7,13 +7,15 @@ mod status;
 mod update;
 
 use crate::camera::CameraService;
+use crate::functions::ntp::handle_ntp;
 use crate::settings::{BaseSettings, Settings};
 use crate::utils::PublishExt;
 use crate::utils::ResultExt;
 use camera::*;
 pub use camera::{STILL_CAMERA_CONTROLS_FILENAME, VIDEO_CAMERA_CONTROLS_FILENAME};
 use command::*;
-pub use ntp::handle_ntp;
+pub use ntp::sync_ntp;
+pub use requests::NtpRequest;
 use reqwest::Client;
 use rumqttc::v5::mqttbytes::v5::Publish;
 use rumqttc::v5::AsyncClient;
@@ -33,7 +35,7 @@ pub async fn handle_notification(
 ) {
     // Handle topic
     let _ = if publish.topic_matches_pi(&settings.ntp_topic, &base_settings.pi_zero_id) {
-        handle_ntp(&base_settings, &settings, &mqtt_client)
+        handle_ntp(&base_settings, &settings, &mqtt_client, &publish)
             .await
             .send_if_err(&base_settings, &mqtt_client, &settings.ntp_topic)
             .await
