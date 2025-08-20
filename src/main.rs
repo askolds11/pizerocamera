@@ -20,12 +20,12 @@ use crate::startup::{critical_startup, startup};
 use crate::updater::restart;
 use crate::utils::{AsyncClientExt, PublishExt, SuccessWrapper};
 use nix::sys::time::TimeValLike;
-use rumqttc::v5::Event;
 use rumqttc::v5::mqttbytes::v5::Packet;
+use rumqttc::v5::Event;
 use std::env;
 use std::ops::DerefMut;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
@@ -115,7 +115,7 @@ async fn main() {
 
                         mqtt_client
                             .publish_individual(
-                                &base_settings.update_topic,
+                                &settings.cancel_topic,
                                 &base_settings.pi_zero_id,
                                 json,
                             )
