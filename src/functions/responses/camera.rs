@@ -12,6 +12,9 @@ pub enum CameraResponse {
     SendPicture {
         response: SuccessWrapper<SendPictureResponse>,
     },
+    SyncStatus {
+        response: SuccessWrapper<SyncStatusResponse>,
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -51,11 +54,20 @@ pub enum TakePictureResponse {
 
 #[derive(Serialize, Debug)]
 #[serde(tag = "type")]
+#[serde(rename_all_fields = "camelCase")]
 pub enum SendPictureResponse {
     Failed { uuid: Uuid, message: String },
     PictureFailedToRead { uuid: Uuid, message: String },
     PictureSent { uuid: Uuid },
     PictureFailedToSend { uuid: Uuid, message: String },
+}
+
+#[derive(Serialize, Debug)]
+#[serde(tag = "type")]
+#[serde(rename_all_fields = "camelCase")]
+pub enum SyncStatusResponse {
+    Failed { message: String },
+    Success { sync_ready: bool, sync_timing: i64 },
 }
 
 impl CameraResponse {

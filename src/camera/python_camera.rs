@@ -113,6 +113,19 @@ impl CameraService {
         Ok((jpeg_bytes, width, height, metadata))
     }
 
+    pub fn get_sync_status(&self, py: Python) -> PyResult<(bool, i64)> {
+        let result = self.instance.call_method0(py, "get_sync_status")?;
+        // Returned tuple with array and metadata
+        let tuple = result.downcast_bound::<PyTuple>(py)?;
+
+        let sync_ready = tuple.get_item(0)?;
+        let sync_ready: bool = sync_ready.extract()?;
+        let sync_timer = tuple.get_item(1)?;
+        let sync_timer: i64 = sync_timer.extract()?;
+
+        Ok((sync_ready, sync_timer))
+    }
+
     pub fn set_controls(&self, py: Python, controls: Bound<PyDict>) -> PyResult<()> {
         self.instance
             .call_method1(py, "set_controls", (controls,))?;

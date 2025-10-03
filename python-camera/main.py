@@ -106,7 +106,7 @@ class CameraService:
             #raw
             transform=libcamera.Transform(),
             colour_space=libcamera.ColorSpace.Sycc(),
-            buffer_count=1,
+            buffer_count=3,
             controls=still_controls,
             display=None,
             encode=None,
@@ -121,26 +121,28 @@ class CameraService:
         """
         :return: Jpeg bytes and metadata
         """
-        # TODO: Maybe can use this instead of awaiting in rust?
-#         print("Current time = ", time.monotonic_ns())
-#         print("Waiting until = ", monotonic_ns)
-        # request = picam2.capture_request(flush=time.monotonic_ns())
         request = self.cam.capture_request(flush=monotonic_ns)
-        # image = request.make_image("main")
         array = request.make_array("main")
         metadata = request.get_metadata()
         request.release()
 
-        # jpeg_buffer = io.BytesIO()
-        # image.save(jpeg_buffer, format='JPEG', quality=95)
-        # jpeg_bytes = jpeg_buffer.getvalue()
-
         flattened_array = array.flatten()
         height, width, _ = array.shape
 
-        # print(metadata)
-
         return flattened_array, width, height, metadata
+
+    def get_sync_status(self) -> tuple[bool, int]:
+        """
+        :return: Is sync ready, sync error in microseconds
+        """
+        request = self.cam.capture_request()
+        metadata = request.get_metadata()
+        request.release()
+
+        sync_ready = metadata["SyncReady"]
+        sync_timing = metadata["SyncTimer"]
+
+        return sync_ready, sync_timing
 
     def stop(self):
         print("Stopping camera")

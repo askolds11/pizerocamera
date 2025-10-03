@@ -27,6 +27,7 @@ pub struct SetControls {
 pub enum CameraRequest {
     TakePicture(TakePicture),
     SendPicture(SendPicture),
+    GetSyncStatus,
     SetControls(SetControls),
     GetControls(CameraMode),
     GetControlLimits,

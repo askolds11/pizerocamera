@@ -128,7 +128,7 @@ pub async fn startup(
 
     println!("Read controls from file");
 
-    let camera_service = Python::with_gil(|py| -> Result<CameraService, anyhow::Error> {
+    let camera_service = Python::attach(|py| -> Result<CameraService, anyhow::Error> {
         let still_controls_pydict = match &still_controls {
             Some(v) => Some(v.to_pydict(py)?),
             None => None,

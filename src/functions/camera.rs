@@ -1,15 +1,17 @@
 use crate::camera::{CameraControlsLimit, CameraMode, CameraService};
 use crate::endpoints::get_upload_image_url;
 use crate::functions::requests::{CameraRequest, SendPicture, SetControls, TakePicture};
-use crate::functions::responses::{CameraResponse, SendPictureResponse, TakePictureResponse};
+use crate::functions::responses::{
+    CameraResponse, SendPictureResponse, SyncStatusResponse, TakePictureResponse,
+};
 use crate::settings::{BaseSettings, Settings};
 use crate::utils::{AsyncClientExt, SuccessWrapper};
 use jpeg_encoder::{ColorType, Encoder};
 use nix::sys::time::TimeValLike;
 use pyo3::{PyResult, Python};
-use reqwest::{Client, multipart};
-use rumqttc::v5::AsyncClient;
+use reqwest::{multipart, Client};
 use rumqttc::v5::mqttbytes::v5::Publish;
+use rumqttc::v5::AsyncClient;
 use serde::Serialize;
 use std::collections::HashMap;
 use tokio::fs;
@@ -35,7 +37,7 @@ pub async fn handle_picture(
     http_client: &Client,
     camera_service: &mut CameraService,
     publish: &Publish,
-    wall_nanoseconds: Option<i64>
+    wall_nanoseconds: Option<i64>,
 ) -> Result<(), anyhow::Error> {
     let camera_request: CameraRequest = serde_json::from_slice(&publish.payload)?;
 
@@ -47,7 +49,7 @@ pub async fn handle_picture(
                 mqtt_client,
                 camera_service,
                 &request,
-                wall_nanoseconds
+                wall_nanoseconds,
             )
             .await;
 
@@ -119,6 +121,9 @@ pub async fn handle_picture(
         CameraRequest::GetControls(_) => {
             get_controls(base_settings, settings, mqtt_client, camera_service).await?;
         }
+        CameraRequest::GetSyncStatus => {
+            get_sync_status(base_settings, settings, mqtt_client, camera_service).await?;
+        }
     }
 
     Ok(())
@@ -147,8 +152,7 @@ async fn take_picture(
                 wall_nanoseconds, request.picture_epoch, wait_time
             ),
             message_received_nanos,
-            wait_time_nanos: wait_time
-
+            wait_time_nanos: wait_time,
         };
         let success_wrapper = SuccessWrapper::failure(err);
         let response = CameraResponse::TakePicture {
@@ -178,7 +182,7 @@ async fn take_picture(
                 uuid: request.uuid,
                 monotonic_time: monotonic_nanoseconds_future,
                 message_received_nanos,
-                wait_time_nanos: wait_time
+                wait_time_nanos: wait_time,
             };
             // It's ok if it fails, we will still try to save/send
             let success_wrapper = SuccessWrapper::success(picture_taken);
@@ -204,7 +208,7 @@ async fn take_picture(
                 uuid: request.uuid,
                 message: e.to_string(),
                 message_received_nanos,
-                wait_time_nanos: wait_time
+                wait_time_nanos: wait_time,
             };
             let success_wrapper = SuccessWrapper::failure(err);
             let response = CameraResponse::TakePicture {
@@ -382,7 +386,7 @@ async fn take_picture_take(
     camera_service: &CameraService,
     time: u64,
 ) -> Result<(Vec<u8>, u16, u16, HashMap<String, String>), anyhow::Error> {
-    let picture_result = Python::with_gil(
+    let picture_result = Python::attach(
         |py| -> PyResult<(Vec<u8>, u16, u16, HashMap<String, String>)> {
             camera_service.capture(py, time)
         },
@@ -476,8 +480,64 @@ async fn take_picture_send(
     }
 }
 
+async fn get_sync_status(
+    base_settings: &BaseSettings,
+    settings: &Settings,
+    mqtt_client: &AsyncClient,
+    camera_service: &CameraService
+) -> Result<(), anyhow::Error> {
+    let sync_status_result =
+        Python::attach(|py| -> PyResult<(bool, i64)> { camera_service.get_sync_status(py) });
+    match sync_status_result {
+        Ok(sync_status) => {
+            let (sync_ready, sync_timing) = sync_status;
+            // Send that taken successfully
+            let picture_taken = SyncStatusResponse::Success {
+                sync_ready,
+                sync_timing,
+            };
+            // It's ok if it fails, we will still try to save/send
+            let success_wrapper = SuccessWrapper::success(picture_taken);
+            let response = CameraResponse::SyncStatus {
+                response: success_wrapper,
+            }
+            .into_bytes()
+            .ok();
+            if let Some(sync_status) = response {
+                mqtt_client
+                    .publish_individual(
+                        &settings.camera_topic,
+                        &base_settings.pi_zero_id,
+                        sync_status,
+                    )
+                    .await
+                    .unwrap_or_default();
+            }
+        }
+        Err(e) => {
+            let err = SyncStatusResponse::Failed {
+                message: e.to_string(),
+            };
+            let success_wrapper = SuccessWrapper::failure(err);
+            let response = CameraResponse::SyncStatus {
+                response: success_wrapper,
+            };
+
+            mqtt_client
+                .publish_individual(
+                    &settings.camera_topic,
+                    &base_settings.pi_zero_id,
+                    response.into_bytes()?,
+                )
+                .await?;
+        }
+    };
+
+    Ok(())
+}
+
 async fn start_preview(camera_service: &mut CameraService) -> Result<(), anyhow::Error> {
-    Python::with_gil(|py| -> Result<(), anyhow::Error> {
+    Python::attach(|py| -> Result<(), anyhow::Error> {
         let video_controls_pydict = match &camera_service.video_controls {
             Some(v) => Some(v.to_pydict(py)?),
             None => None,
@@ -489,7 +549,7 @@ async fn start_preview(camera_service: &mut CameraService) -> Result<(), anyhow:
 }
 
 async fn stop_preview(camera_service: &mut CameraService) -> Result<(), anyhow::Error> {
-    Python::with_gil(|py| -> Result<(), anyhow::Error> {
+    Python::attach(|py| -> Result<(), anyhow::Error> {
         let still_controls_pydict = match &camera_service.still_controls {
             Some(v) => Some(v.to_pydict(py)?),
             None => None,
@@ -527,7 +587,7 @@ async fn set_controls(
     // Only set config if config matches
     if controls.camera_mode == camera_service.camera_mode {
         println!("Settings controls in python");
-        Python::with_gil(|py| -> Result<(), anyhow::Error> {
+        Python::attach(|py| -> Result<(), anyhow::Error> {
             camera_service.set_controls(py, controls.camera_controls.to_pydict(py)?)?;
             Ok(())
         })?;
@@ -553,7 +613,7 @@ async fn get_control_limits(
     mqtt_client: &AsyncClient,
     camera_service: &CameraService,
 ) -> Result<(), anyhow::Error> {
-    let (min, max, default) = Python::with_gil(
+    let (min, max, default) = Python::attach(
         |py| -> Result<
             (
                 CameraControlsLimit,
